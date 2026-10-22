@@ -13,8 +13,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install pykrx
+      - run: pip install -U pykrx
       - run: python collect.py
+        env:
+          KRX_ID: ${{ secrets.KRX_ID }}
+          KRX_PW: ${{ secrets.KRX_PW }}
       - run: |
           git config user.name "data-bot"
           git config user.email "data-bot@users.noreply.github.com"
