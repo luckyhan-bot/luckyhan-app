@@ -71,7 +71,7 @@ def main():
     # 1) 연기금 과거 기록 (없는 날만 받아오기)
     hist = load("history.json", {})
     for d in days:
-        if d not in hist:
+        if not hist.get(d):   # 비어 있는 날도 다시 받기
             print("기록 받는 중", d)
             hist[d] = {c: v[2] for c, v in net_by_market(d, "연기금").items() if v[2] != 0}
     hist = {d: hist[d] for d in days}
@@ -83,6 +83,9 @@ def main():
         for code, (name, m, amt) in net_by_market(today, inv).items():
             s = stocks.setdefault(code, {"n": name, "m": m, "v": [0] * len(INVESTORS)})
             s["v"][i] = amt
+
+    if not stocks:
+        raise SystemExit("한국거래소 자료를 못 받았어요. KRX_ID / KRX_PW 설정을 확인하세요.")
 
     rev = list(reversed(days))
     for code, s in stocks.items():
