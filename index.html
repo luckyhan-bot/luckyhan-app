@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="연기금 수급">
+<meta name="theme-color" content="#F3F5F8">
+<title>연기금 수급</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F5F8; --panel:#FFFFFF; --ink:#16191F; --sub:#6A7180; --line:#E3E6EC;
+  --buy:#D42A3C; --buy-soft:#FCE9EB; --sell:#1D5BC2; --sell-soft:#E6EEFB;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#101318; --panel:#191D24; --ink:#EEF0F3; --sub:#8E95A3; --line:#2A303A;
+    --buy:#FF5A69; --buy-soft:#3A1C21; --sell:#5B95F5; --sell-soft:#16263F;
+    color-scheme:dark;
+  }
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  font-variant-numeric:tabular-nums; -webkit-text-size-adjust:100%;
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
+.wrap{max-width:560px;margin:0 auto;padding:0 16px 40px}
+header{padding:22px 2px 12px}
+h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.02em}
+.meta{margin-top:4px;color:var(--sub);font-size:14px}
+
+.searchbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding:8px 0 10px}
+.search{display:flex;gap:8px}
+.search input{
+  flex:1;min-width:0;font:inherit;font-size:16px;color:var(--ink);background:var(--panel);
+  border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;outline:none;
+}
+.search input:focus{border-color:var(--ink)}
+.search button{font:inherit;font-size:15px;font-weight:500;border:0;border-radius:12px;padding:0 16px;background:var(--ink);color:var(--bg)}
+.hint{color:var(--sub);font-size:13px;margin:6px 2px 0}
+
+h2{font-size:17px;font-weight:700;margin:26px 2px 10px;letter-spacing:-.01em}
+.panel{background:var(--panel);border-radius:16px;border:1px solid var(--line);overflow:hidden}
+
+.row{padding:14px 16px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.top{display:flex;align-items:baseline;gap:10px}
+.rank{width:20px;color:var(--sub);font-size:14px;flex:none}
+.name{flex:1;min-width:0;font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.amt{font-size:19px;font-weight:700}
+.up{color:var(--buy)} .down{color:var(--sell)} .zero{color:var(--sub)}
+.streak{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13px;color:var(--sub)}
+.ticks{display:flex;gap:2px}
+.ticks i{display:block;width:5px;height:12px;border-radius:2px}
+.ticks.up i{background:var(--buy)} .ticks.down i{background:var(--sell)}
+.others{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:8px;font-size:13px;color:var(--sub)}
+.others b{font-weight:500}
+.allbuy{display:inline-block;margin-left:6px;font-size:12px;font-weight:500;color:var(--buy);background:var(--buy-soft);border-radius:6px;padding:1px 6px;vertical-align:2px}
+
+.tabs{display:flex;gap:6px;margin:26px 2px 10px}
+.tabs button{font:inherit;font-size:16px;font-weight:700;border:0;background:none;color:var(--sub);padding:6px 10px;border-radius:10px}
+.tabs button[aria-selected="true"].b{background:var(--buy-soft);color:var(--buy)}
+.tabs button[aria-selected="true"].s{background:var(--sell-soft);color:var(--sell)}
+.badge{flex:none;font-size:14px;font-weight:700;border-radius:8px;padding:3px 9px;min-width:46px;text-align:center}
+.badge.up{background:var(--buy-soft)} .badge.down{background:var(--sell-soft)}
+.note{color:var(--sub);font-size:13px;margin:8px 2px 0;line-height:1.5}
+.empty{padding:18px 16px;color:var(--sub);font-size:15px;line-height:1.5}
+.clear{font:inherit;font-size:14px;background:none;border:0;color:var(--sub);text-decoration:underline;padding:4px 2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>연기금 수급</h1>
+    <div class="meta" id="meta">불러오는 중…</div>
+  </header>
+
+  <div class="searchbar">
+    <div class="search">
+      <input id="q" type="search" inputmode="search" enterkeyhint="search" placeholder="종목명 또는 종목번호" autocomplete="off">
+      <button id="go" type="button">조회</button>
+    </div>
+  </div>
+  <div id="result"></div>
+
+  <h2>관심 종목</h2>
+  <div class="panel" id="watch"></div>
+
+  <div class="tabs" role="tablist">
+    <button class="b" role="tab" aria-selected="true" data-k="buy">연속 순매수</button>
+    <button class="s" role="tab" aria-selected="false" data-k="sell">연속 순매도</button>
+  </div>
+  <div class="panel" id="rank"></div>
+  <p class="note" id="rnote"></p>
+</div>
+
+<script>
+const LABELS = ["연기금","사모","투신","기관","외국인","개인"];
+const ALIAS = {"하닉":"SK하이닉스","삼전":"삼성전자","한조양":"HD한국조선해양","에너빌":"두산에너빌리티","현차":"현대차"};
+let DATA = null, WATCH = [], TAB = "buy";
+
+const $ = id => document.getElementById(id);
+const norm = s => String(s || "").toLowerCase().replace(/\s/g, "");
+const cls = v => v > 0 ? "up" : v < 0 ? "down" : "zero";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function fmt(v){
+  if (v == null) return "–";
+  const t = Math.abs(v).toLocaleString("ko-KR", {minimumFractionDigits:1, maximumFractionDigits:1});
+  return (v > 0 ? "+" : v < 0 ? "−" : "") + t;
+}
+function streakText(s){
+  if (!s) return "연속 기록 없음";
+  const n = Math.abs(s), plus = n >= DATA.maxDays ? "+" : "";
+  return `${n}${plus}일 연속 ${s > 0 ? "매수" : "매도"}`;
+}
+function ticks(s){
+  const n = Math.min(Math.abs(s), 20);
+  return `<span class="ticks ${cls(s)}">${"<i></i>".repeat(n)}</span>`;
+}
+
+function findStock(w){
+  if (w.code && DATA.stocks[w.code]) return [w.code, DATA.stocks[w.code]];
+  const key = norm(w.name);
+  for (const [c, s] of Object.entries(DATA.stocks)) if (norm(s.n) === key) return [c, s];
+  return null;
+}
+
+function detailRow(name, s){
+  const v = s.v;
+  const all = v[0] > 0 && v[1] > 0 && v[2] > 0;
+  const others = LABELS.slice(1).map((l, i) =>
+    `<span>${l} <b class="${cls(v[i+1])}">${fmt(v[i+1])}</b></span>`).join("");
+  return `<div class="row">
+    <div class="top"><span class="name">${esc(name)}${all ? '<span class="allbuy">기관 3곳 매수</span>' : ""}</span>
+      <span class="amt ${cls(v[0])}">${fmt(v[0])}</span></div>
+    <div class="streak">${ticks(s.s)}<span>${streakText(s.s)}</span></div>
+    <div class="others">${others}</div>
+  </div>`;
+}
+
+function renderWatch(){
+  $("watch").innerHTML = WATCH.map(w => {
+    const f = findStock(w);
+    if (f) return detailRow(f[1].n, f[1]);
+    const why = w.code ? "오늘 자료가 없어요." : "종목번호를 watchlist.json에 넣어 주세요.";
+    return `<div class="row"><div class="top"><span class="name">${esc(w.name)}</span></div>
+      <div class="streak">${why}</div></div>`;
+  }).join("") || `<div class="empty">watchlist.json에 관심 종목을 추가하세요.</div>`;
+}
+
+function renderRank(){
+  const list = DATA[TAB];
+  $("rank").innerHTML = list.length ? list.map((c, i) => {
+    const s = DATA.stocks[c];
+    return `<div class="row"><div class="top">
+      <span class="rank">${i + 1}</span>
+      <span class="name">${esc(s.n)}</span>
+      <span class="amt ${cls(s.v[0])}">${fmt(s.v[0])}</span>
+      <span class="badge ${cls(s.s)}">${Math.abs(s.s)}일</span>
+    </div></div>`;
+  }).join("") : `<div class="empty">조건에 맞는 종목이 없어요.</div>`;
+  $("rnote").textContent = `연속 일수가 많은 순서, 같으면 오늘 금액 순서예요. 오늘 ${DATA.minAmt}억 원 이상만 표시해요.`;
+  document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.k === TAB));
+}
+
+let lastQ = null;
+function search(){
+  const raw = $("q").value.trim();
+  if (!DATA || raw === lastQ) return;
+  lastQ = raw;
+  if (!raw){ $("result").innerHTML = ""; return; }
+  const q = norm(ALIAS[raw] || raw);
+  const hits = Object.entries(DATA.stocks)
+    .filter(([c, s]) => c === q || norm(s.n).includes(q))
+    .sort((a, b) => (norm(a[1].n) === q ? -1 : 0) - (norm(b[1].n) === q ? -1 : 0) || a[1].n.length - b[1].n.length)
+    .slice(0, 10);
+  $("result").innerHTML = `<h2>‘${esc(raw)}’ 조회 결과</h2><div class="panel">${
+    hits.length ? hits.map(([c, s]) => detailRow(s.n, s)).join("")
+               : `<div class="empty">찾는 종목이 없어요. 종목명을 다시 확인하거나 6자리 종목번호로 조회해 보세요.</div>`
+  }</div><button class="clear" type="button" id="clr">결과 닫기</button>`;
+  $("clr").onclick = () => { $("q").value = ""; lastQ = null; $("result").innerHTML = ""; };
+}
+
+// 다 입력한 뒤 엔터 · 조회 버튼 · 다른 곳 탭 할 때만 조회
+$("q").addEventListener("change", search);
+$("q").addEventListener("keydown", e => { if (e.key === "Enter"){ e.preventDefault(); $("q").blur(); search(); } });
+$("go").addEventListener("click", search);
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { TAB = b.dataset.k; renderRank(); });
+
+(async () => {
+  try {
+    const [d, w] = await Promise.all([
+      fetch("data.json?t=" + Date.now(), {cache:"no-store"}).then(r => { if (!r.ok) throw 0; return r.json(); }),
+      fetch("watchlist.json?t=" + Date.now(), {cache:"no-store"}).then(r => r.ok ? r.json() : []).catch(() => [])
+    ]);
+    DATA = d; WATCH = w;
+    const dt = new Date(d.date + "T00:00:00");
+    const day = "일월화수목금토"[dt.getDay()];
+    $("meta").textContent = `${dt.getMonth() + 1}월 ${dt.getDate()}일(${day}) 장 마감 기준, 단위 억 원`;
+    renderWatch(); renderRank();
+  } catch (e) {
+    $("meta").textContent = "아직 데이터가 없어요.";
+    $("watch").innerHTML = `<div class="empty">GitHub의 Actions 탭에서 daily를 한 번 실행하면 데이터가 생겨요.</div>`;
+  }
+})();
+</script>
+</body>
+</html>
