@@ -1,0 +1,23 @@
+name: daily
+on:
+  schedule:
+    - cron: "40 9 * * 1-5"   # 평일 18:40 (한국시간)
+  workflow_dispatch:          # 수동 실행 버튼
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pykrx
+      - run: python collect.py
+      - run: |
+          git config user.name "data-bot"
+          git config user.email "data-bot@users.noreply.github.com"
+          git add data.json history.json
+          git commit -m "data $(date +%F)" || echo "변경 없음"
+          git push
