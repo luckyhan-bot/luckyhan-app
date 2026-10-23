@@ -104,9 +104,21 @@ def fetch_macro():
             out["items"].append(prev_items.get(key, {"k": key, "n": name, "g": grp, "c": []}))
 
     try:  # 하이일드 스프레드 (미국 연준 FRED, 단위 %)
-        r = get_retry("https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2")
+        # FRED는 브라우저처럼 꾸민 요청을 GitHub 서버에서 보내면 응답을 안 해서, 기본 요청으로 받음
+        import urllib.request
+        text = None
+        for i in range(3):
+            try:
+                with urllib.request.urlopen("https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2", timeout=60) as f:
+                    text = f.read().decode("utf-8")
+                break
+            except Exception as e:
+                print("하이일드 재시도", i + 1, e)
+                time.sleep(5 * (i + 1))
+        if text is None:
+            raise RuntimeError("FRED 응답 없음")
         rows = []
-        for row in list(csv.reader(io.StringIO(r.text)))[1:]:
+        for row in list(csv.reader(io.StringIO(text)))[1:]:
             if len(row) >= 2 and row[1] not in ("", ".") and row[0] >= cutoff:
                 rows.append([row[0], round(float(row[1]), 2)])
         out["hy"] = rows
