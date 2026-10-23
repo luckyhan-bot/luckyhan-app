@@ -64,9 +64,24 @@ def eok(won):
 
 
 # ---------------- 매크로 ----------------
-def fetch_macro():
+def get_retry(url, tries=3, timeout=60):
     import requests
+    last = None
+    for i in range(tries):
+        try:
+            r = requests.get(url, headers=UA, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            last = e
+            time.sleep(5 * (i + 1))
+    raise last
+
+
+def fetch_macro():
     import yfinance as yf
+    prev = load("macro.json", {})          # 실패한 항목은 지난번 자료를 그대로 씀
+    prev_items = {i["k"]: i for i in prev.get("items", [])}
     cutoff = (kst_now() - dt.timedelta(days=MACRO_DAYS)).strftime("%Y-%m-%d")
     out = {"updated": kst_now().strftime("%Y-%m-%d %H:%M"), "items": [], "fg": None, "hy": None}
 
@@ -85,23 +100,22 @@ def fetch_macro():
                     rows.append([ds] + [round(float(r[c]) * scale, nd) for c in ("Open", "High", "Low", "Close")])
             out["items"].append({"k": key, "n": name, "g": grp, "c": rows})
         except Exception as e:
-            print("매크로 건너뜀", name, e)
-            out["items"].append({"k": key, "n": name, "g": grp, "c": []})
+            print("매크로 건너뜀(지난 자료 사용)", name, e)
+            out["items"].append(prev_items.get(key, {"k": key, "n": name, "g": grp, "c": []}))
 
     try:  # 하이일드 스프레드 (미국 연준 FRED, 단위 %)
-        r = requests.get("https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2", headers=UA, timeout=30)
-        r.raise_for_status()
+        r = get_retry("https://fred.stlouisfed.org/graph/fredgraph.csv?id=BAMLH0A0HYM2")
         rows = []
         for row in list(csv.reader(io.StringIO(r.text)))[1:]:
             if len(row) >= 2 and row[1] not in ("", ".") and row[0] >= cutoff:
                 rows.append([row[0], round(float(row[1]), 2)])
         out["hy"] = rows
     except Exception as e:
-        print("하이일드 건너뜀", e)
+        print("하이일드 건너뜀(지난 자료 사용)", e)
+        out["hy"] = prev.get("hy")
 
     try:  # 공포탐욕지수 (CNN, 비공식)
-        r = requests.get("https://production.dataviz.cnn.io/index/fearandgreed/graphdata", headers=UA, timeout=30)
-        r.raise_for_status()
+        r = get_retry("https://production.dataviz.cnn.io/index/fearandgreed/graphdata")
         j = r.json()
         hist = []
         for p in j.get("fear_and_greed_historical", {}).get("data", []):
@@ -111,7 +125,8 @@ def fetch_macro():
         fg = j.get("fear_and_greed", {})
         out["fg"] = {"score": round(float(fg.get("score", 0)), 1), "rating": fg.get("rating", ""), "hist": hist}
     except Exception as e:
-        print("공포탐욕 건너뜀", e)
+        print("공포탐욕 건너뜀(지난 자료 사용)", e)
+        out["fg"] = prev.get("fg")
 
     save("macro.json", out)
     print("매크로 완료")
