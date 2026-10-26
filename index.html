@@ -137,6 +137,14 @@ td.px{color:var(--ink);font-weight:500}
   background:linear-gradient(90deg,#1D5BC2 0%,#7FA6E6 30%,#C9CDD6 50%,#F09AA4 70%,#D42A3C 100%)}
 .gauge i{position:absolute;top:-4px;width:4px;height:18px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
 .gscale{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);padding:0 4px}
+.golink{display:block;margin:10px 4px 6px;text-align:center;text-decoration:none;font-size:15px;font-weight:700;
+  background:var(--ink);color:var(--bg);border-radius:12px;padding:12px}
+.fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 4px 8px}
+.fcell{background:var(--bg);border-radius:10px;padding:8px 9px}
+.fcell span{display:block;font-size:12px;color:var(--sub)}
+.fcell b{display:block;font-size:16px;font-weight:700;margin:2px 0}
+.fcell small{display:block;font-size:11px;color:var(--sub)}
+.munit{font-size:12px;color:var(--sub)}
 .empty-sm{color:var(--sub);font-size:14px;padding:10px 4px 12px}
 </style>
 </head>
@@ -344,18 +352,84 @@ function hyCard(hy){
     ${lineSVG(p)}
     <div class="mnote">신용이 낮은 회사채와 국채의 금리 차이예요. 오르면 시장이 위험을 피한다는 신호로 봐요. 미국 연준(FRED) 자료라 하루 늦게 나와요. ${shortDate(hy[hy.length - 1][0])} 기준.</div></div>`;
 }
+function nightCard(){
+  return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 야간선물</span></div>
+    <div class="mnote">평일 저녁 6시부터 다음 날 새벽 6시까지 거래돼요. 1분마다 바뀌는 실시간 시세라 이 앱에는 담을 수 없어서, 실시간 차트 사이트로 연결해 드려요.</div>
+    <a class="golink" href="https://stockhub.kr/charts" target="_blank" rel="noopener">실시간 차트 열기 ↗</a></div>`;
+}
+
+// ---------- 시장 수급 (코스피 · 코스닥 · 선물) ----------
+let FSEL = 2;                       // 1 개인, 2 외국인, 3 기관
+const FNAMES = ["", "개인", "외국인", "기관"];
+function runStreak(rows, j){
+  let n = 0, sg = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const v = rows[i][j];
+    if (!v) break;
+    const s = v > 0 ? 1 : -1;
+    if (!sg) sg = s;
+    if (s !== sg) break;
+    n++;
+  }
+  return n * sg;
+}
+function barsSVG(rows, j, d){
+  const n = rows.length, W = 360, H = 150, L = 4, R = 52, T = 10, B = 126, pw = W - L - R;
+  const vals = rows.map(r => r[j] || 0);
+  const mx = Math.max(1, ...vals.map(Math.abs)), Z = (T + B) / 2, bh = (B - T) / 2;
+  const step = pw / n, bw = Math.max(1.2, Math.min(9, step * 0.65));
+  const bars = vals.map((v, i) => {
+    if (!v) return "";
+    const h = Math.max(1, Math.abs(v) / mx * bh), x = L + step * (i + 0.5);
+    return `<rect x="${(x - bw / 2).toFixed(1)}" y="${(v > 0 ? Z - h : Z).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="var(${v > 0 ? "--buy" : "--sell"})"/>`;
+  }).join("");
+  const f = v => num(v, d);
+  return `<svg viewBox="0 0 ${W} ${H}">
+    <line x1="${L}" x2="${W - R}" y1="${Z}" y2="${Z}" stroke="var(--line)"/>
+    <text class="ax" x="${W - R + 4}" y="${T + 4}">+${f(mx)}</text>
+    <text class="ax" x="${W - R + 4}" y="${B}">−${f(mx)}</text>
+    ${bars}
+    <text class="ax" x="${L}" y="${H - 6}">${shortDate(rows[0][0])}</text>
+    <text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${shortDate(rows[n - 1][0])}</text>
+  </svg>`;
+}
+function flowCard(title, rows, unit, note){
+  if (!rows || !rows.length)
+    return `<div class="mcard"><div class="mhead"><span class="mn">${title}</span></div><div class="empty-sm">오늘은 자료를 못 받았어요.</div></div>`;
+  const last = rows[rows.length - 1], d = /억/.test(unit) ? 0 : 0;
+  const cells = [1, 2, 3].map(j => {
+    const v = last[j], st = runStreak(rows, j);
+    return `<div class="fcell"><span>${FNAMES[j]}</span><b class="${cls(v)}">${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), d)}</b>
+      <small>${st ? `${Math.abs(st)}일 연속 ${st > 0 ? "매수" : "매도"}` : "–"}</small></div>`;
+  }).join("");
+  return `<div class="mcard"><div class="mhead"><span class="mn">${title}</span><span class="munit">${shortDate(last[0])} 기준, ${unit}</span></div>
+    <div class="fgrid">${cells}</div>
+    ${barsSVG(rows.slice(-RANGE), FSEL, d)}
+    <div class="ctabs" style="padding:0 4px">${[1, 2, 3].map(j => `<button type="button" data-fsel="${j}" aria-selected="${j === FSEL}">${FNAMES[j]}</button>`).join("")}</div>
+    ${note ? `<div class="mnote">${note}</div>` : ""}</div>`;
+}
+function flowSection(){
+  const fl = MACRO.flows || {}, fu = MACRO.fut;
+  return `<div class="sec">시장 수급</div>
+    ${flowCard("코스피 수급", fl.kospi, "억 원")}
+    ${flowCard("코스닥 수급", fl.kosdaq, "억 원")}
+    ${flowCard("코스피200 선물 수급", fu && fu.rows, fu ? fu.unit.replace("억원", "억 원") : "", "막대 아래 버튼으로 개인·외국인·기관을 바꿔 볼 수 있어요.")}`;
+}
+
 function renderMacro(){
   if (!MACRO){ $("view").innerHTML = `<div class="panel" style="margin-top:12px"><div class="empty">매크로 자료가 아직 없어요. Actions에서 daily를 실행하면 생겨요.</div></div>`; return; }
   const ranges = [[21, "1개월"], [63, "3개월"], [126, "6개월"]];
-  const sec = g => MACRO.items.filter(i => i.g === g).map(macroCard).join("");
+  const sec = g => MACRO.items.filter(i => i.g === g).map(i => macroCard(i) + (i.k === "kosdaq" ? nightCard() : "")).join("");
   $("view").innerHTML = `
     <div class="top-tools"><p class="gdesc">일봉 차트</p>
       ${ranges.map(([n, t]) => `<button type="button" class="tool ${RANGE === n ? "on" : ""}" data-range="${n}">${t}</button>`).join("")}</div>
     <div class="sec">지수</div>${sec("지수")}
+    ${flowSection()}
     <div class="sec">금리 · 유가 · 코인</div>${sec("매크로")}
     <div class="sec">시장 심리</div>${fgCard(MACRO.fg)}${hyCard(MACRO.hy)}
     <p class="note">${MACRO.updated} 갱신. 미국 지표는 전날 밤 마감 기준이에요.</p>`;
   document.querySelectorAll("[data-range]").forEach(b => b.onclick = () => { RANGE = +b.dataset.range; renderMacro(); });
+  document.querySelectorAll("[data-fsel]").forEach(b => b.onclick = () => { FSEL = +b.dataset.fsel; renderMacro(); });
 }
 
 // ---------- 탭 ----------
@@ -516,7 +590,10 @@ document.addEventListener("click", e => {
     DATA = d;
     loadFavs(Array.isArray(w) ? w : []);
     const dt = new Date(d.date + "T00:00:00");
-    $("meta").textContent = `수급 ${dt.getMonth() + 1}월 ${dt.getDate()}일(${"일월화수목금토"[dt.getDay()]}) 장 마감 기준, 단위 억 원`;
+    const md = `${dt.getMonth() + 1}월 ${dt.getDate()}일(${"일월화수목금토"[dt.getDay()]})`;
+    $("meta").textContent = d.final === false
+      ? `수급 ${md} ${d.updated.slice(11)} 중간 집계(잠정), 단위 억 원`
+      : `수급 ${md} 장 마감 기준, 단위 억 원`;
   } else {
     $("meta").textContent = "새 방식 자료를 기다리는 중이에요. Actions에서 daily를 실행해 주세요.";
   }

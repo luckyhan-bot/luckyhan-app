@@ -78,6 +78,65 @@ def get_retry(url, tries=3, timeout=60):
     raise last
 
 
+def fetch_market_flows():
+    """코스피·코스닥 시장 전체 투자자별 순매수 (억 원): [날짜, 개인, 외국인, 기관]"""
+    now = kst_now()
+    start = (now - dt.timedelta(days=MACRO_DAYS)).strftime("%Y%m%d")
+    out = {}
+    for key, mk in (("kospi", "KOSPI"), ("kosdaq", "KOSDAQ")):
+        df = stock.get_market_trading_value_by_date(start, now.strftime("%Y%m%d"), mk)
+        time.sleep(SLEEP)
+        fcol = "외국인합계" if "외국인합계" in df.columns else "외국인"
+        out[key] = [[d.strftime("%Y-%m-%d"), eok(r["개인"]), eok(r[fcol]), eok(r["기관합계"])]
+                    for d, r in df.iterrows()]
+        print("시장 수급", key, out[key][-1] if out[key] else "없음")
+    return out
+
+
+def fetch_futures_flows():
+    """코스피200 선물 투자자별 순매수 (네이버 금융 표): [날짜, 개인, 외국인, 기관]  ※ 시험 단계"""
+    import re
+    import pandas as pd
+    import requests
+    rows, unit = {}, ""
+    for page in (1, 2, 3, 4, 5, 6):
+        url = ("https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate="
+               + kst_now().strftime("%Y%m%d") + "&sosok=02&page=" + str(page))
+        r = requests.get(url, headers={"User-Agent": UA["User-Agent"]}, timeout=30)
+        r.encoding = "euc-kr"
+        m = re.search(r"단위\s*:\s*([^)\s<]+)", r.text)
+        if m:
+            unit = m.group(1)
+        tables = pd.read_html(io.StringIO(r.text))
+        for t in tables:
+            cols = [" ".join(str(x) for x in (c if isinstance(c, tuple) else (c,))) for c in t.columns]
+            if not any("개인" in c for c in cols) or not any("외국인" in c for c in cols):
+                continue
+            if page == 1:
+                print("선물 시험 단위:", unit, "열:", cols)
+                print(t.head(4).to_string())
+            t.columns = cols
+            ci = next(c for c in cols if "개인" in c)
+            cf = next(c for c in cols if "외국인" in c)
+            cg = next((c for c in cols if "기관계" in c), None) or next(c for c in cols if "기관" in c)
+            cd = cols[0]
+            for _, row in t.iterrows():
+                d = str(row[cd]).strip()
+                mm = re.match(r"(\d{2})\.(\d{2})\.(\d{2})$", d)
+                if not mm:
+                    continue
+                def n(v):
+                    v = str(v).replace(",", "").strip()
+                    return float(v) if v not in ("", "nan", "-") else 0.0
+                rows[f"20{mm.group(1)}-{mm.group(2)}-{mm.group(3)}"] = [n(row[ci]), n(row[cf]), n(row[cg])]
+        time.sleep(1)
+    out = [[d] + rows[d] for d in sorted(rows)]
+    print("선물 시험 결과", len(out), "일", out[-3:])
+    if not out:
+        raise RuntimeError("선물 표를 못 찾음")
+    return {"unit": unit or "억원", "rows": out}
+
+
 def fetch_macro():
     import yfinance as yf
     prev = load("macro.json", {})          # 실패한 항목은 지난번 자료를 그대로 씀
@@ -139,6 +198,17 @@ def fetch_macro():
     except Exception as e:
         print("공포탐욕 건너뜀(지난 자료 사용)", e)
         out["fg"] = prev.get("fg")
+
+    try:
+        out["flows"] = fetch_market_flows()
+    except Exception as e:
+        print("시장 수급 건너뜀(지난 자료 사용)", e)
+        out["flows"] = prev.get("flows")
+    try:
+        out["fut"] = fetch_futures_flows()
+    except Exception as e:
+        print("선물 수급 건너뜀(지난 자료 사용)", e)
+        out["fut"] = prev.get("fut")
 
     save("macro.json", out)
     print("매크로 완료")
@@ -317,6 +387,8 @@ def run_flows():
     save("data.json", {
         "date": f"{today[:4]}-{today[4:6]}-{today[6:]}",
         "updated": kst_now().strftime("%Y-%m-%d %H:%M"),
+        # 오늘 자료를 장 마감(15:30) 뒤에 받았으면 확정, 장중이면 잠정
+        "final": not (today == kst_now().strftime("%Y%m%d") and kst_now().strftime("%H%M") < "1600"),
         "minAmt": MIN_AMT,
         "groups": gkeys,
         "days": detail_days[::-1],
