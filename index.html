@@ -141,9 +141,10 @@ td.px{color:var(--ink);font-weight:500}
   background:var(--ink);color:var(--bg);border-radius:12px;padding:12px}
 .fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 4px 8px}
 .fcell{background:var(--bg);border-radius:10px;padding:8px 9px}
-.fcell span{display:block;font-size:12px;color:var(--sub)}
-.fcell b{display:block;font-size:16px;font-weight:700;margin:2px 0}
-.fcell small{display:block;font-size:11px;color:var(--sub)}
+.fcell .ln{display:flex;align-items:baseline;justify-content:space-between;gap:4px;white-space:nowrap}
+.fcell span{font-size:12px;color:var(--sub)}
+.fcell b{font-size:14px;font-weight:700}
+.fcell small{display:block;font-size:11px;color:var(--sub);margin-top:3px}
 .munit{font-size:12px;color:var(--sub)}
 .empty-sm{color:var(--sub);font-size:14px;padding:10px 4px 12px}
 </style>
@@ -278,8 +279,8 @@ function valFmt(k, v){
   if (k === "wti") return "$" + num(v, 2);
   return num(v, 2);
 }
-function candleSVG(c){
-  const n = c.length, W = 360, H = 150, L = 4, R = 52, T = 8, B = 128, pw = W - L - R;
+function candleSVG(c, noDates){
+  const n = c.length, W = 360, H = noDates ? 134 : 150, L = 4, R = 52, T = 8, B = 128, pw = W - L - R;
   const hi = Math.max(...c.map(r => r[2])), lo = Math.min(...c.map(r => r[3])), span = hi - lo || 1;
   const y = v => B - (v - lo) / span * (B - T);
   const step = pw / n, bw = Math.max(1.2, Math.min(7, step * 0.65));
@@ -290,7 +291,7 @@ function candleSVG(c){
     return `<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${y(r[2]).toFixed(1)}" y2="${y(r[3]).toFixed(1)}" stroke="${col}" stroke-width="1"/>`
          + `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${top.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${col}"/>`;
   }).join("");
-  return axisWrap(W, H, L, R, T, B, hi, lo, c[0][0], c[n - 1][0], body);
+  return axisWrap(W, H, L, R, T, B, hi, lo, c[0][0], c[n - 1][0], body, 2, noDates);
 }
 function lineSVG(p, opt = {}){
   const n = p.length, W = 360, H = 150, L = 4, R = 52, T = 8, B = 128, pw = W - L - R;
@@ -304,7 +305,7 @@ function lineSVG(p, opt = {}){
     <circle cx="${x(n - 1).toFixed(1)}" cy="${y(p[n - 1][1]).toFixed(1)}" r="3" fill="var(--ink)"/>`;
   return axisWrap(W, H, L, R, T, B, hi, lo, p[0][0], p[n - 1][0], body, opt.d);
 }
-function axisWrap(W, H, L, R, T, B, hi, lo, d0, d1, body, d = 2){
+function axisWrap(W, H, L, R, T, B, hi, lo, d0, d1, body, d = 2, noDates = false){
   const f = v => num(v, hi >= 1000 ? 0 : d);
   return `<svg viewBox="0 0 ${W} ${H}">
     <line x1="${L}" x2="${W - R}" y1="${T}" y2="${T}" stroke="var(--line)" stroke-dasharray="3 3"/>
@@ -312,8 +313,8 @@ function axisWrap(W, H, L, R, T, B, hi, lo, d0, d1, body, d = 2){
     <text class="ax" x="${W - R + 4}" y="${T + 3}">${f(hi)}</text>
     <text class="ax" x="${W - R + 4}" y="${B + 3}">${f(lo)}</text>
     ${body}
-    <text class="ax" x="${L}" y="${H - 6}">${shortDate(d0)}</text>
-    <text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${shortDate(d1)}</text>
+    ${noDates ? "" : `<text class="ax" x="${L}" y="${H - 6}">${shortDate(d0)}</text>
+    <text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${shortDate(d1)}</text>`}
   </svg>`;
 }
 function changeLine(last, prev, k){
@@ -328,8 +329,10 @@ function macroCard(it){
   const last = it.c[it.c.length - 1][4], prev = it.c.length > 1 ? it.c[it.c.length - 2][4] : null;
   return `<div class="mcard"><div class="mhead"><span class="mn">${esc(it.n)}</span>
     <span class="mv ${cls(prev == null ? 0 : last - prev)}">${valFmt(it.k, last)}</span></div>
-    ${changeLine(last, prev, it.k)}${candleSVG(c)}
-    ${(it.k === "kospi" || it.k === "kosdaq") ? flowBlock(((MACRO.flows || {})[it.k]), "억 원") : ""}</div>`;
+    ${changeLine(last, prev, it.k)}
+    ${(it.k === "kospi" || it.k === "kosdaq") && (MACRO.flows || {})[it.k]
+      ? candleSVG(c, true) + flowBlock(MACRO.flows[it.k], "억 원", c.map(r => r[0]))
+      : candleSVG(c)}</div>`;
 }
 const FG_KO = {"extreme fear":"극단적 공포","fear":"공포","neutral":"중립","greed":"탐욕","extreme greed":"극단적 탐욕"};
 function fgCard(fg){
@@ -374,38 +377,42 @@ function runStreak(rows, j){
   }
   return n * sg;
 }
-function barsSVG(rows, j, d){
-  const n = rows.length, W = 360, H = 150, L = 4, R = 52, T = 10, B = 126, pw = W - L - R;
-  const vals = rows.map(r => r[j] || 0);
+function barsSVG(rows, j, label, dates){
+  // dates가 있으면 위 캔들 차트와 같은 날짜 칸에 막대를 맞춤
+  const map = {}; rows.forEach(r => { map[r[0]] = r; });
+  const ds = dates || rows.map(r => r[0]);
+  const n = ds.length, W = 360, H = 118, L = 4, R = 52, T = 18, B = 96, pw = W - L - R;
+  const vals = ds.map(dd => (map[dd] ? map[dd][j] : 0) || 0);
   const mx = Math.max(1, ...vals.map(Math.abs)), Z = (T + B) / 2, bh = (B - T) / 2;
-  const step = pw / n, bw = Math.max(1.2, Math.min(9, step * 0.65));
+  const step = pw / n, bw = Math.max(1.2, Math.min(7, step * 0.65));
   const bars = vals.map((v, i) => {
     if (!v) return "";
     const h = Math.max(1, Math.abs(v) / mx * bh), x = L + step * (i + 0.5);
     return `<rect x="${(x - bw / 2).toFixed(1)}" y="${(v > 0 ? Z - h : Z).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="1" fill="var(${v > 0 ? "--buy" : "--sell"})"/>`;
   }).join("");
-  const f = v => num(v, d);
   return `<svg viewBox="0 0 ${W} ${H}">
+    <text class="ax" x="${L}" y="10" style="font-weight:500">${label}</text>
     <line x1="${L}" x2="${W - R}" y1="${Z}" y2="${Z}" stroke="var(--line)"/>
-    <text class="ax" x="${W - R + 4}" y="${T + 4}">+${f(mx)}</text>
-    <text class="ax" x="${W - R + 4}" y="${B}">−${f(mx)}</text>
+    <text class="ax" x="${W - R + 4}" y="${T + 4}">+${num(mx, 0)}</text>
+    <text class="ax" x="${W - R + 4}" y="${B}">−${num(mx, 0)}</text>
     ${bars}
-    <text class="ax" x="${L}" y="${H - 6}">${shortDate(rows[0][0])}</text>
-    <text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${shortDate(rows[n - 1][0])}</text>
+    <text class="ax" x="${L}" y="${H - 6}">${shortDate(ds[0])}</text>
+    <text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${shortDate(ds[n - 1])}</text>
   </svg>`;
 }
-function flowBlock(rows, unit){
+function flowBlock(rows, unit, dates){
   if (!rows || !rows.length) return `<div class="empty-sm">수급 자료를 아직 못 받았어요.</div>`;
   const last = rows[rows.length - 1];
   const cells = [1, 2, 3].map(j => {
     const v = last[j], st = runStreak(rows, j);
-    return `<div class="fcell"><span>${FNAMES[j]}</span><b class="${cls(v)}">${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), 0)}</b>
+    return `<div class="fcell"><div class="ln"><span>${FNAMES[j]}</span><b class="${cls(v)}">${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), 0)}</b></div>
       <small>${st ? `${Math.abs(st)}일 연속 ${st > 0 ? "매수" : "매도"}` : "–"}</small></div>`;
   }).join("");
-  return `<div class="mhead" style="margin-top:12px"><span class="mn" style="font-size:14px">투자자별 순매수</span><span class="munit">${shortDate(last[0])} 기준, ${unit}</span></div>
-    <div class="fgrid">${cells}</div>
-    ${barsSVG(rows.slice(-RANGE), FSEL, 0)}
-    <div class="ctabs" style="padding:0 4px">${[1, 2, 3].map(j => `<button type="button" data-fsel="${j}" aria-selected="${j === FSEL}">${FNAMES[j]}</button>`).join("")}</div>`;
+  const p = dates ? rows : rows.slice(-RANGE);
+  return `${barsSVG(p, FSEL, `${FNAMES[FSEL]} 순매수 (${unit})`, dates)}
+    <div class="ctabs" style="padding:0 4px">${[1, 2, 3].map(j => `<button type="button" data-fsel="${j}" aria-selected="${j === FSEL}">${FNAMES[j]}</button>`).join("")}</div>
+    <div class="munit" style="padding:10px 4px 0">${shortDate(last[0])} 기준, ${unit}</div>
+    <div class="fgrid" style="margin-top:6px">${cells}</div>`;
 }
 function futCard(){
   const fu = MACRO.fut;
