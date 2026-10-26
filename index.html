@@ -328,7 +328,8 @@ function macroCard(it){
   const last = it.c[it.c.length - 1][4], prev = it.c.length > 1 ? it.c[it.c.length - 2][4] : null;
   return `<div class="mcard"><div class="mhead"><span class="mn">${esc(it.n)}</span>
     <span class="mv ${cls(prev == null ? 0 : last - prev)}">${valFmt(it.k, last)}</span></div>
-    ${changeLine(last, prev, it.k)}${candleSVG(c)}</div>`;
+    ${changeLine(last, prev, it.k)}${candleSVG(c)}
+    ${(it.k === "kospi" || it.k === "kosdaq") ? flowBlock(((MACRO.flows || {})[it.k]), "억 원") : ""}</div>`;
 }
 const FG_KO = {"extreme fear":"극단적 공포","fear":"공포","neutral":"중립","greed":"탐욕","extreme greed":"극단적 탐욕"};
 function fgCard(fg){
@@ -393,38 +394,33 @@ function barsSVG(rows, j, d){
     <text class="ax" x="${W - R}" y="${H - 6}" text-anchor="end">${shortDate(rows[n - 1][0])}</text>
   </svg>`;
 }
-function flowCard(title, rows, unit, note){
-  if (!rows || !rows.length)
-    return `<div class="mcard"><div class="mhead"><span class="mn">${title}</span></div><div class="empty-sm">오늘은 자료를 못 받았어요.</div></div>`;
-  const last = rows[rows.length - 1], d = /억/.test(unit) ? 0 : 0;
+function flowBlock(rows, unit){
+  if (!rows || !rows.length) return `<div class="empty-sm">수급 자료를 아직 못 받았어요.</div>`;
+  const last = rows[rows.length - 1];
   const cells = [1, 2, 3].map(j => {
     const v = last[j], st = runStreak(rows, j);
-    return `<div class="fcell"><span>${FNAMES[j]}</span><b class="${cls(v)}">${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), d)}</b>
+    return `<div class="fcell"><span>${FNAMES[j]}</span><b class="${cls(v)}">${v > 0 ? "+" : v < 0 ? "−" : ""}${num(Math.abs(v), 0)}</b>
       <small>${st ? `${Math.abs(st)}일 연속 ${st > 0 ? "매수" : "매도"}` : "–"}</small></div>`;
   }).join("");
-  return `<div class="mcard"><div class="mhead"><span class="mn">${title}</span><span class="munit">${shortDate(last[0])} 기준, ${unit}</span></div>
+  return `<div class="mhead" style="margin-top:12px"><span class="mn" style="font-size:14px">투자자별 순매수</span><span class="munit">${shortDate(last[0])} 기준, ${unit}</span></div>
     <div class="fgrid">${cells}</div>
-    ${barsSVG(rows.slice(-RANGE), FSEL, d)}
-    <div class="ctabs" style="padding:0 4px">${[1, 2, 3].map(j => `<button type="button" data-fsel="${j}" aria-selected="${j === FSEL}">${FNAMES[j]}</button>`).join("")}</div>
-    ${note ? `<div class="mnote">${note}</div>` : ""}</div>`;
+    ${barsSVG(rows.slice(-RANGE), FSEL, 0)}
+    <div class="ctabs" style="padding:0 4px">${[1, 2, 3].map(j => `<button type="button" data-fsel="${j}" aria-selected="${j === FSEL}">${FNAMES[j]}</button>`).join("")}</div>`;
 }
-function flowSection(){
-  const fl = MACRO.flows || {}, fu = MACRO.fut;
-  return `<div class="sec">시장 수급</div>
-    ${flowCard("코스피 수급", fl.kospi, "억 원")}
-    ${flowCard("코스닥 수급", fl.kosdaq, "억 원")}
-    ${flowCard("코스피200 선물 수급", fu && fu.rows, fu ? fu.unit.replace("억원", "억 원") : "", "막대 아래 버튼으로 개인·외국인·기관을 바꿔 볼 수 있어요.")}`;
+function futCard(){
+  const fu = MACRO.fut;
+  return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 선물 수급</span></div>
+    ${flowBlock(fu && fu.rows, fu ? fu.unit : "")}
+    <div class="mnote">주간 거래 기준, 전체 월물 합계예요. 외국인 선물 순매수는 다음 날 장 방향을 볼 때 많이 참고해요.</div></div>`;
 }
-
 function renderMacro(){
   if (!MACRO){ $("view").innerHTML = `<div class="panel" style="margin-top:12px"><div class="empty">매크로 자료가 아직 없어요. Actions에서 daily를 실행하면 생겨요.</div></div>`; return; }
   const ranges = [[21, "1개월"], [63, "3개월"], [126, "6개월"]];
-  const sec = g => MACRO.items.filter(i => i.g === g).map(i => macroCard(i) + (i.k === "kosdaq" ? nightCard() : "")).join("");
+  const sec = g => MACRO.items.filter(i => i.g === g).map(i => macroCard(i) + (i.k === "kosdaq" ? nightCard() + futCard() : "")).join("");
   $("view").innerHTML = `
     <div class="top-tools"><p class="gdesc">일봉 차트</p>
       ${ranges.map(([n, t]) => `<button type="button" class="tool ${RANGE === n ? "on" : ""}" data-range="${n}">${t}</button>`).join("")}</div>
     <div class="sec">지수</div>${sec("지수")}
-    ${flowSection()}
     <div class="sec">금리 · 유가 · 코인</div>${sec("매크로")}
     <div class="sec">시장 심리</div>${fgCard(MACRO.fg)}${hyCard(MACRO.hy)}
     <p class="note">${MACRO.updated} 갱신. 미국 지표는 전날 밤 마감 기준이에요.</p>`;

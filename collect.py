@@ -136,7 +136,9 @@ def fetch_futures_flows():
                      and ("straight" in k.lower() or "net" in k.lower()) and isinstance(v, (int, float))]
             found.sort(key=lambda k: 0 if "volume" in k.lower() else 1)
             return found[0] if found else None
-        keys = {w: pick(data[0], w) for w in ("individual", "foreign", "institution")}
+        # 다음 금융 항목 이름: 개인 privateSettlement, 외국인 foreignSettlement, 기관 institutionSettlement (계약 수)
+        known = {"individual": "privateSettlement", "foreign": "foreignSettlement", "institution": "institutionSettlement"}
+        keys = {w: (known[w] if known[w] in data[0] else pick(data[0], w)) for w in known}
         print("선물 시험 쓰는 항목:", keys)
         if not all(keys.values()):
             raise RuntimeError("선물 항목 이름을 못 찾음")
@@ -151,7 +153,7 @@ def fetch_futures_flows():
         if not rows or rows[-1][0] < (now - dt.timedelta(days=10)).strftime("%Y-%m-%d"):
             print("선물 시험", isin, "최근 자료가 아님, 다음 월물 시도")
             continue
-        unit = "계약" if "volume" in keys["foreign"].lower() else "다음 금융 기준"
+        unit = "계약" if ("settlement" in keys["foreign"].lower() or "volume" in keys["foreign"].lower()) else "다음 금융 기준"
         return {"unit": unit, "rows": rows, "keys": keys}
     raise RuntimeError("선물 자료를 못 받음")
 
