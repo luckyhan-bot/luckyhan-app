@@ -93,48 +93,67 @@ def fetch_market_flows():
     return out
 
 
+def isin_check(body):
+    """ISIN 마지막 검증숫자"""
+    digits = "".join(str(int(c, 36)) for c in body)
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch) * (2 if i % 2 == 0 else 1)
+        total += d // 10 + d % 10
+    return str((10 - total % 10) % 10)
+
+
 def fetch_futures_flows():
-    """코스피200 선물 투자자별 순매수 (네이버 금융 표): [날짜, 개인, 외국인, 기관]  ※ 시험 단계"""
-    import re
-    import pandas as pd
+    """코스피200 선물 투자자별 순매수 (다음 금융): [날짜, 개인, 외국인, 기관]  ※ 시험 단계
+    다음 금융의 선물 투자자 값은 월물별이 아니라 전 월물 합계라, 상장된 월물 하나만 조회하면 됨"""
     import requests
-    rows, unit = {}, ""
-    for page in (1, 2, 3, 4, 5, 6):
-        url = ("https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate="
-               + kst_now().strftime("%Y%m%d") + "&sosok=02&page=" + str(page))
-        r = requests.get(url, headers={"User-Agent": UA["User-Agent"]}, timeout=30)
-        r.encoding = "euc-kr"
-        m = re.search(r"단위\s*:\s*([^)\s<]+)", r.text)
-        if m:
-            unit = m.group(1)
-        tables = pd.read_html(io.StringIO(r.text))
-        for t in tables:
-            cols = [" ".join(str(x) for x in (c if isinstance(c, tuple) else (c,))) for c in t.columns]
-            if not any("개인" in c for c in cols) or not any("외국인" in c for c in cols):
+    now = kst_now()
+    cands = []   # 아직 만기 전인 가까운 월물부터 시도
+    for yy in (now.year, now.year + 1):
+        for mnum, mm in ((3, "3"), (6, "6"), (9, "9"), (12, "C")):
+            if yy == now.year and mnum < now.month:
                 continue
-            if page == 1:
-                print("선물 시험 단위:", unit, "열:", cols)
-                print(t.head(4).to_string())
-            t.columns = cols
-            ci = next(c for c in cols if "개인" in c)
-            cf = next(c for c in cols if "외국인" in c)
-            cg = next((c for c in cols if "기관계" in c), None) or next(c for c in cols if "기관" in c)
-            cd = cols[0]
-            for _, row in t.iterrows():
-                d = str(row[cd]).strip()
-                mm = re.match(r"(\d{2})\.(\d{2})\.(\d{2})$", d)
-                if not mm:
-                    continue
-                def n(v):
-                    v = str(v).replace(",", "").strip()
-                    return float(v) if v not in ("", "nan", "-") else 0.0
-                rows[f"20{mm.group(1)}-{mm.group(2)}-{mm.group(3)}"] = [n(row[ci]), n(row[cf]), n(row[cg])]
-        time.sleep(1)
-    out = [[d] + rows[d] for d in sorted(rows)]
-    print("선물 시험 결과", len(out), "일", out[-3:])
-    if not out:
-        raise RuntimeError("선물 표를 못 찾음")
-    return {"unit": unit or "억원", "rows": out}
+            body = f"KR4A01{str(yy)[-1]}{mm}000"
+            cands.append(body + isin_check(body))
+    headers = {"User-Agent": UA["User-Agent"], "Referer": "https://finance.daum.net/domestic/futures"}
+    for isin in cands:
+        url = f"https://finance.daum.net/api/future/{isin}/days?page=1&perPage=100&pagination=true"
+        try:
+            r = requests.get(url, headers=headers, timeout=30)
+            j = r.json()
+        except Exception as e:
+            print("선물 시험", isin, "실패", e)
+            continue
+        data = j.get("data") if isinstance(j, dict) else j
+        if not data:
+            print("선물 시험", isin, "자료 없음", str(j)[:200])
+            continue
+        print("선물 시험", isin, "항목:", sorted(data[0].keys()))
+        print("선물 시험 첫 줄:", data[0])
+
+        def pick(d, word):   # 계약 수(volume) 항목을 먼저, 없으면 다른 순매수 항목
+            found = [k for k, v in d.items() if word in k.lower()
+                     and ("straight" in k.lower() or "net" in k.lower()) and isinstance(v, (int, float))]
+            found.sort(key=lambda k: 0 if "volume" in k.lower() else 1)
+            return found[0] if found else None
+        keys = {w: pick(data[0], w) for w in ("individual", "foreign", "institution")}
+        print("선물 시험 쓰는 항목:", keys)
+        if not all(keys.values()):
+            raise RuntimeError("선물 항목 이름을 못 찾음")
+        rows = []
+        for d in data:
+            ds = str(d.get("date") or d.get("tradeDate") or "")[:10]
+            if len(ds) == 10:
+                rows.append([ds, float(d[keys["individual"]] or 0), float(d[keys["foreign"]] or 0),
+                             float(d[keys["institution"]] or 0)])
+        rows.sort()
+        print("선물 시험 결과", len(rows), "일", rows[-2:])
+        if not rows or rows[-1][0] < (now - dt.timedelta(days=10)).strftime("%Y-%m-%d"):
+            print("선물 시험", isin, "최근 자료가 아님, 다음 월물 시도")
+            continue
+        unit = "계약" if "volume" in keys["foreign"].lower() else "다음 금융 기준"
+        return {"unit": unit, "rows": rows, "keys": keys}
+    raise RuntimeError("선물 자료를 못 받음")
 
 
 def fetch_macro():
