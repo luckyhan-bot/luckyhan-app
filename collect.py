@@ -237,10 +237,20 @@ def fetch_macro():
 
 # ---------------- 수급 ----------------
 def business_days():
+    """거래일 목록. 장중에도 오늘이 들어가도록 시장 전체 투자자별 거래 자료로 판단"""
     now = kst_now()
     start = (now - dt.timedelta(days=HIST_DAYS * 2)).strftime("%Y%m%d")
-    df = stock.get_market_ohlcv(start, now.strftime("%Y%m%d"), "005930")
-    return [d.strftime("%Y%m%d") for d in df.index][-HIST_DAYS:]
+    end = now.strftime("%Y%m%d")
+    days = set()
+    try:
+        df = stock.get_market_trading_value_by_date(start, end, "KOSPI")
+        days |= {d.strftime("%Y%m%d") for d in df.index}
+        time.sleep(SLEEP)
+    except Exception as e:
+        print("거래일 확인(수급) 실패", e)
+    df = stock.get_market_ohlcv(start, end, "005930")
+    days |= {d.strftime("%Y%m%d") for d in df.index}
+    return sorted(days)[-HIST_DAYS:]
 
 
 def fetch_day(day, investors):
