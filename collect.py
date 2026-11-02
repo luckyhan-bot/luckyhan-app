@@ -142,19 +142,25 @@ def fetch_futures_flows():
         print("선물 시험 쓰는 항목:", keys)
         if not all(keys.values()):
             raise RuntimeError("선물 항목 이름을 못 찾음")
-        rows = []
+        rows, px = [], []
         for d in data:
             ds = str(d.get("date") or d.get("tradeDate") or "")[:10]
             if len(ds) == 10:
                 rows.append([ds, float(d[keys["individual"]] or 0), float(d[keys["foreign"]] or 0),
                              float(d[keys["institution"]] or 0)])
+                if d.get("tradePrice") is not None:
+                    px.append([ds, round(float(d["tradePrice"]), 2)])
         rows.sort()
+        px.sort()
         print("선물 시험 결과", len(rows), "일", rows[-2:])
         if not rows or rows[-1][0] < (now - dt.timedelta(days=10)).strftime("%Y-%m-%d"):
             print("선물 시험", isin, "최근 자료가 아님, 다음 월물 시도")
             continue
         unit = "계약" if ("settlement" in keys["foreign"].lower() or "volume" in keys["foreign"].lower()) else "다음 금융 기준"
-        return {"unit": unit, "rows": rows, "keys": keys}
+        top = max(data, key=lambda d: str(d.get("date", "")))
+        return {"unit": unit, "rows": rows, "keys": keys, "px": px,
+                "chg": top.get("changePrice"), "rate": top.get("changeRate"),
+                "at": kst_now().strftime("%Y-%m-%d %H:%M")}
     raise RuntimeError("선물 자료를 못 받음")
 
 

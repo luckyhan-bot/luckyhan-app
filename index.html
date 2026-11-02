@@ -304,7 +304,7 @@ function lineSVG(p, opt = {}){
   const body = `<polygon points="${x(0).toFixed(1)},${B} ${pts} ${x(n - 1).toFixed(1)},${B}" fill="var(--ink)" opacity=".06"/>
     <polyline points="${pts}" fill="none" stroke="var(--ink)" stroke-width="1.8" stroke-linejoin="round"/>
     <circle cx="${x(n - 1).toFixed(1)}" cy="${y(p[n - 1][1]).toFixed(1)}" r="3" fill="var(--ink)"/>`;
-  return axisWrap(W, H, L, R, T, B, hi, lo, p[0][0], p[n - 1][0], body, opt.d);
+  return axisWrap(W, opt.noDates ? 134 : H, L, R, T, B, hi, lo, p[0][0], p[n - 1][0], body, opt.d, opt.noDates);
 }
 function axisWrap(W, H, L, R, T, B, hi, lo, d0, d1, body, d = 2, noDates = false){
   const f = v => num(v, hi >= 1000 ? 0 : d);
@@ -418,9 +418,21 @@ function flowBlock(rows, unit, dates){
 }
 function futCard(){
   const fu = MACRO.fut;
-  return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 선물 수급</span></div>
-    ${flowBlock(fu && fu.rows, fu ? fu.unit : "")}
-    <div class="mnote">주간 거래 기준, 전체 월물 합계예요. 외국인 선물 순매수는 다음 날 장 방향을 볼 때 많이 참고해요.</div></div>`;
+  let head = "", price = "";
+  if (fu && fu.px && fu.px.length) {
+    const p = fu.px.slice(-RANGE), last = fu.px[fu.px.length - 1][1];
+    const chg = fu.chg == null ? null : (fu.rate < 0 || /FALL/.test(String(fu.chg)) ? -Math.abs(fu.chg) : Math.abs(fu.chg));
+    const at = fu.at ? `${shortDate(fu.at)} ${fu.at.slice(11)} 기준` : "";
+    head = `<span class="mv ${cls(chg || 0)}">${num(last, 2)}</span>`;
+    price = `${chg != null ? `<div class="mchg ${cls(chg)}">${chg > 0 ? "▲" : chg < 0 ? "▼" : ""} ${num(Math.abs(chg), 2)} (${pctFmt((fu.rate || 0) * 100)})</div>` : ""}
+      <div class="mnote" style="padding:0 4px 6px;text-align:right">${at} 가격, 일별 흐름</div>
+      ${lineSVG(p, {noDates: true})}`;
+  }
+  const dates = fu && fu.px && fu.px.length ? fu.px.slice(-RANGE).map(r => r[0]) : null;
+  return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 선물</span>${head}</div>
+    ${price}
+    ${flowBlock(fu && fu.rows, fu ? fu.unit : "", dates)}
+    <div class="mnote">수급은 주간 거래 기준, 전체 월물 합계예요. 외국인 선물 순매수는 다음 날 장 방향을 볼 때 많이 참고해요.</div></div>`;
 }
 function renderMacro(){
   if (!MACRO){ $("view").innerHTML = `<div class="panel" style="margin-top:12px"><div class="empty">매크로 자료가 아직 없어요. Actions에서 daily를 실행하면 생겨요.</div></div>`; return; }
