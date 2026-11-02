@@ -183,6 +183,24 @@ def fetch_macro():
             print("매크로 건너뜀(지난 자료 사용)", name, e)
             out["items"].append(prev_items.get(key, {"k": key, "n": name, "g": grp, "c": []}))
 
+    try:  # 리튬: 중국 광저우선물거래소 탄산리튬 선물 연결(LC0), 위안/톤 — akshare(시나 금융) 사용
+        import akshare as ak
+        df = ak.futures_zh_daily_sina(symbol="LC0")
+        print("리튬 시험 열:", list(df.columns), "마지막:", df.tail(1).to_dict("records"))
+        rows = []
+        for _, r in df.iterrows():
+            ds = str(r["date"])[:10]
+            if ds >= cutoff:
+                rows.append([ds] + [round(float(r[c]), 0) for c in ("open", "high", "low", "close")])
+        if not rows:
+            raise ValueError("빈 자료")
+        lith = {"k": "lithium", "n": "탄산리튬 (중국 선물)", "g": "매크로", "c": rows}
+    except Exception as e:
+        print("리튬 건너뜀(지난 자료 사용)", e)
+        lith = prev_items.get("lithium", {"k": "lithium", "n": "탄산리튬 (중국 선물)", "g": "매크로", "c": []})
+    pos = next((i + 1 for i, it in enumerate(out["items"]) if it["k"] == "wti"), len(out["items"]))
+    out["items"].insert(pos, lith)
+
     try:  # 하이일드 스프레드 (미국 연준 FRED, 단위 %)
         # FRED는 브라우저처럼 꾸민 요청을 GitHub 서버에서 보내면 응답을 안 해서, 기본 요청으로 받음
         import urllib.request
@@ -333,9 +351,16 @@ def fetch_detail(code, days, today):
 
 def run_flows():
     days = business_days()
+    try:
+        first = fetch_day(days[-1], INVESTORS)
+    except SystemExit as e:
+        # 장 마감 직전·직후 등 거래소가 종목별 자료를 잠시 안 주는 때가 있음 → 직전 거래일 기준으로 만듦
+        print("오늘 종목별 자료가 아직 없어 직전 거래일 기준으로 만들어요:", e)
+        days = days[:-1]
+        first = fetch_day(days[-1], INVESTORS)
     today = days[-1]
     detail_days = days[-DETAIL_DAYS:]
-    cache = {today: fetch_day(today, INVESTORS)}
+    cache = {today: first}
 
     # 1) 날짜별 파일 (전 종목 종가·등락률·투자자별 금액) — 오늘은 매번 새로, 지난 날은 없을 때만
     for d in detail_days:
