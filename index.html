@@ -156,8 +156,14 @@ td.px{color:var(--ink);font-weight:500}
 .hlegend i{display:inline-block;width:26px;height:10px;border-radius:2px}
 .eve-sum{display:flex;align-items:center;gap:8px;margin:8px 4px 4px;padding:10px 12px;border-radius:12px;background:var(--bg)}
 .eve-sum b{font-size:16px}
-.eve-g{margin:12px 4px 0}
-.eve-g h4{margin:0 0 6px;font-size:13px;color:var(--sub);font-weight:500}
+.eve-g{margin:12px 0 0;border-radius:12px;padding:8px 10px 4px;background:var(--gbg);border-left:5px solid var(--gc)}
+.eve-g h4{margin:0 0 4px;font-size:14px;font-weight:700;color:var(--gc);display:flex;align-items:center;gap:6px}
+.eve-g.g0{--gc:#5B4FD6;--gbg:#EFEDFD} .eve-g.g1{--gc:#0E8A7E;--gbg:#E5F5F2}
+.eve-g.g2{--gc:#2E7D32;--gbg:#EAF4EA} .eve-g.g3{--gc:#B26A00;--gbg:#FFF3E0}
+@media (prefers-color-scheme:dark){
+  .eve-g.g0{--gc:#A79FFF;--gbg:#211E3A} .eve-g.g1{--gc:#5FD3C4;--gbg:#14302C}
+  .eve-g.g2{--gc:#7FCB83;--gbg:#18291A} .eve-g.g3{--gc:#FFB74D;--gbg:#33260F}}
+.eve-g .eve-row{border-top-color:rgba(0,0,0,.07)}
 .eve-row{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:14px}
 .eve-row:first-of-type{border-top:0}
 .eve-row .en{flex:1;min-width:0}
@@ -515,7 +521,8 @@ function heatCard(){
   return `<div class="mcard"><div class="mhead"><span class="mn">미국 주요 종목 히트맵</span><span class="munit">${label}</span></div>
     <div class="heat">${html}</div>
     <div class="hlegend"><span>−3%</span>${legend}<span>+3%</span></div>
-    <div class="mnote">${at}. 네모 크기는 시가총액, 같은 업종끼리 묶었어요. 프리장은 거래가 적어 정규장에서 크게 바뀔 수 있어요.</div></div>`;
+    <div class="mnote">${at}. 네모 크기는 시가총액, 같은 업종끼리 묶었어요. 프리장은 거래가 적어 정규장에서 크게 바뀔 수 있어요.</div>
+    <a class="golink" href="https://kr.tradingview.com/heatmap/stock/" target="_blank" rel="noopener">실시간 히트맵 보기 ↗</a></div>`;
 }
 
 
@@ -528,7 +535,8 @@ function eveCard(){
   const mood = pos >= 2 ? ["우호적", "up"] : neg >= 2 ? ["부정적", "down"] : ["엇갈림", "zero"];
   const sigs = ev.sig.map(x => `${x.n} <b class="${cls(x.c)}">${pctFmt(x.c)}</b>`).join(" · ");
   const fmtV = it => it.t === "^TNX" ? it.v.toFixed(3) + "%" : it.t === "KRW=X" ? num(it.v, 1) + "원" : num(it.v, 2);
-  const groups = ev.groups.map(g => `<div class="eve-g"><h4>${g.name}</h4>${g.items.map(it =>
+  const icons = ["🇺🇸", "💾", "🇪🇺", "🛢️"];
+  const groups = ev.groups.map((g, gi) => `<div class="eve-g g${gi % 4}"><h4><span>${icons[gi] || ""}</span>${g.name}</h4>${g.items.map(it =>
     `<div class="eve-row"><span class="en">${esc(it.n)}${it.tag ? `<span class="tg">${it.tag}</span>` : ""}</span>
       <span class="ev">${fmtV(it)}</span><span class="ec ${cls(it.c)}">${pctFmt(it.c)}</span></div>`).join("")}</div>`).join("");
   return `<div class="mcard"><div class="mhead"><span class="mn">저녁 8시 전 체크</span><span class="munit">${shortDate(ev.at)} ${ev.at.slice(11)} 기준</span></div>
