@@ -314,6 +314,7 @@ function valFmt(k, v){
   if (k === "us10y") return v.toFixed(3) + "%";
   if (k === "btc") return "$" + num(v, 0);
   if (k === "wti") return "$" + num(v, 2);
+  if (k === "gold") return "$" + num(v, 1);
   if (k === "lithium") return num(v, 0) + "위안";
   return num(v, 2);
 }
@@ -369,6 +370,7 @@ function macroCard(it){
     <span class="mv ${cls(prev == null ? 0 : last - prev)}">${valFmt(it.k, last)}</span></div>
     ${changeLine(last, prev, it.k)}
     ${it.k === "lithium" ? '<div class="mnote" style="padding:0 4px 6px;text-align:right">톤당 가격, 광저우선물거래소</div>' : ""}
+    ${it.k === "gold" ? '<div class="mnote" style="padding:0 4px 6px;text-align:right">온스당 가격, 뉴욕 금 선물</div>' : ""}
     ${(it.k === "kospi" || it.k === "kosdaq") && (MACRO.flows || {})[it.k]
       ? candleSVG(c, true) + flowBlock(MACRO.flows[it.k], "억 원", c.map(r => r[0]))
       : candleSVG(c)}</div>`;

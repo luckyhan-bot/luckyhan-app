@@ -30,6 +30,7 @@ MACRO = [  # (키, 이름, 야후 티커, 구분)
     ("kosdaq", "코스닥",            "^KQ11",   "지수"),
     ("us10y",  "미국 10년물 금리",   "^TNX",    "매크로"),
     ("wti",    "WTI 유가",          "CL=F",    "매크로"),
+    ("gold",   "금",                "GC=F",    "매크로"),
     ("btc",    "비트코인",          "BTC-USD", "매크로"),
 ]
 MACRO_DAYS = 200   # 달력 기준 보관 기간
@@ -291,7 +292,7 @@ def fetch_macro():
     except Exception as e:
         print("리튬 건너뜀(지난 자료 사용)", e)
         lith = prev_items.get("lithium", {"k": "lithium", "n": "탄산리튬 (중국 선물)", "g": "매크로", "c": []})
-    pos = next((i + 1 for i, it in enumerate(out["items"]) if it["k"] == "wti"), len(out["items"]))
+    pos = next((i + 1 for i, it in enumerate(out["items"]) if it["k"] == "gold"), len(out["items"]))
     out["items"].insert(pos, lith)
 
     try:  # 하이일드 스프레드 (미국 연준 FRED, 단위 %)
