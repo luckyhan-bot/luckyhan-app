@@ -32,6 +32,20 @@ MACRO = [  # (키, 이름, 야후 티커, 구분)
     ("btc",    "비트코인",          "BTC-USD", "매크로"),
 ]
 MACRO_DAYS = 200   # 달력 기준 보관 기간
+
+# 미국 히트맵: 업종별 주요 종목 (시가총액은 실행 때마다 받아옴)
+HEAT = {
+    "기술": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "AMD", "CRM", "ADBE", "CSCO", "QCOM", "TXN", "INTC",
+             "MU", "AMAT", "LRCX", "KLAC", "IBM", "NOW", "PLTR", "ANET"],
+    "커뮤니케이션": ["GOOGL", "META", "NFLX", "DIS", "TMUS", "VZ", "T"],
+    "경기소비재": ["AMZN", "TSLA", "HD", "MCD", "LOW", "BKNG", "NKE", "SBUX"],
+    "금융": ["BRK-B", "JPM", "V", "MA", "BAC", "WFC", "GS", "MS", "AXP", "C", "BLK", "SCHW"],
+    "헬스케어": ["LLY", "UNH", "JNJ", "ABBV", "MRK", "TMO", "ABT", "ISRG", "AMGN", "PFE"],
+    "산업재": ["GE", "CAT", "RTX", "HON", "UNP", "BA", "DE", "LMT", "UPS"],
+    "필수소비재": ["WMT", "COST", "PG", "KO", "PEP", "PM"],
+    "에너지": ["XOM", "CVX", "COP"],
+    "유틸리티·부동산·소재": ["NEE", "SO", "PLD", "AMT", "LIN"],
+}
 UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
       "Referer": "https://www.cnn.com/"}
@@ -164,6 +178,77 @@ def fetch_futures_flows():
     raise RuntimeError("선물 자료를 못 받음")
 
 
+EVE = [  # (구분, [(이름, 야후 티커)])
+    ("미국 선물", [("나스닥100 선물", "NQ=F"), ("S&P500 선물", "ES=F"), ("다우 선물", "YM=F")]),
+    ("반도체·빅테크 프리장", [("엔비디아", "NVDA"), ("AMD", "AMD"), ("마이크론", "MU"), ("브로드컴", "AVGO"),
+                         ("TSMC", "TSM"), ("반도체 ETF", "SOXX"), ("애플", "AAPL"), ("마이크로소프트", "MSFT")]),
+    ("유럽 증시", [("독일 DAX", "^GDAXI"), ("유로스톡스50", "^STOXX50E"), ("영국 FTSE", "^FTSE")]),
+    ("유가·금리·환율", [("WTI 유가", "CL=F"), ("미국 10년물", "^TNX"), ("달러/원", "KRW=X")]),
+]
+
+
+def fetch_evening():
+    """저녁 8시 전 체크: 미국 선물, 프리장 반도체·빅테크, 유럽 증시, 유가·금리·환율"""
+    import yfinance as yf
+    groups = []
+    for gname, lst in EVE:
+        items = []
+        for name, t in lst:
+            try:
+                info = yf.Ticker(t).info
+                state = str(info.get("marketState", ""))
+                pc, pp = info.get("preMarketChangePercent"), info.get("preMarketPrice")
+                if state.startswith("PRE") and pc is not None and pp:
+                    c, v, tag = float(pc), float(pp), "프리"
+                else:
+                    c = float(info.get("regularMarketChangePercent") or 0)
+                    v = float(info.get("regularMarketPrice") or 0)
+                    tag = ""
+                if t == "^TNX" and v > 20:
+                    v = v / 10
+                items.append({"n": name, "t": t, "c": round(c, 2), "v": round(v, 3 if t == "^TNX" else 2), "tag": tag})
+            except Exception as e:
+                print("저녁 체크 건너뜀", t, e)
+            time.sleep(0.3)
+        groups.append({"name": gname, "items": items})
+
+    def avg(i):
+        xs = [x["c"] for x in groups[i]["items"]]
+        return sum(xs) / len(xs) if xs else 0
+    nq = next((x["c"] for x in groups[0]["items"] if x["t"] == "NQ=F"), 0)
+    sig = [("나스닥 선물", nq), ("반도체 프리장", avg(1)), ("유럽 증시", avg(2))]
+    print("저녁 체크", [(n, round(v, 2)) for n, v in sig])
+    return {"at": kst_now().strftime("%Y-%m-%d %H:%M"), "groups": groups,
+            "sig": [{"n": n, "c": round(v, 2)} for n, v in sig]}
+
+
+def fetch_heatmap():
+    """미국 주요 종목 등락. 프리장이면 프리장 등락, 아니면 직전 정규장 등락"""
+    import yfinance as yf
+    items, pre = [], 0
+    for sec, ts in HEAT.items():
+        for t in ts:
+            try:
+                info = yf.Ticker(t).info
+                cap = info.get("marketCap") or 0
+                state = str(info.get("marketState", ""))
+                pc = info.get("preMarketChangePercent")
+                if state.startswith("PRE") and pc is not None and info.get("preMarketPrice"):
+                    chg, pre = float(pc), pre + 1
+                else:
+                    chg = float(info.get("regularMarketChangePercent") or 0)
+                if cap:
+                    items.append({"t": t, "s": sec, "cap": round(cap / 1e9, 1), "c": round(chg, 2)})
+            except Exception as e:
+                print("히트맵 건너뜀", t, e)
+            time.sleep(0.3)
+    if len(items) < 20:
+        raise RuntimeError(f"종목을 {len(items)}개만 받음")
+    mode = "pre" if pre > len(items) / 2 else "reg"
+    print("히트맵", len(items), "종목,", "프리장" if mode == "pre" else "정규장", "기준")
+    return {"mode": mode, "at": kst_now().strftime("%Y-%m-%d %H:%M"), "items": items}
+
+
 def fetch_macro():
     import yfinance as yf
     prev = load("macro.json", {})          # 실패한 항목은 지난번 자료를 그대로 씀
@@ -244,6 +329,16 @@ def fetch_macro():
         print("공포탐욕 건너뜀(지난 자료 사용)", e)
         out["fg"] = prev.get("fg")
 
+    try:
+        out["eve"] = fetch_evening()
+    except Exception as e:
+        print("저녁 체크 건너뜀(지난 자료 사용)", e)
+        out["eve"] = prev.get("eve")
+    try:
+        out["heat"] = fetch_heatmap()
+    except Exception as e:
+        print("히트맵 건너뜀(지난 자료 사용)", e)
+        out["heat"] = prev.get("heat")
     try:
         out["flows"] = fetch_market_flows()
     except Exception as e:
