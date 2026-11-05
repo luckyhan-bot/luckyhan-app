@@ -400,25 +400,10 @@ function hyCard(hy){
 }
 function nightCard(){
   return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 야간선물</span><span class="munit">18:00~다음 날 06:00</span></div>
-    <div class="nightbox" id="nightbox"></div>
-    <a class="golink" href="https://stockhub.kr/night" target="_blank" rel="noopener">스톡허브에서 보기 ↗</a>
-    <div class="mnote">트레이딩뷰의 코스피200 선물(최근월물) 차트예요. 낮·밤 시세가 이어서 보여요. 차트가 안 뜨거나 멈춰 있으면 위 버튼으로 보세요.</div></div>`;
+    <a class="golink" href="https://stockhub.kr/night" target="_blank" rel="noopener">야간선물 실시간 보기 ↗</a>
+    <div class="mnote">스톡허브와 트레이딩뷰 모두 앱 안에 띄우는 걸 막아둬서, 야간선물 화면으로 바로 연결해요.</div></div>`;
 }
-function mountNight(){
-  const box = document.getElementById("nightbox");
-  if (!box) return;
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-  box.innerHTML = '<div class="tradingview-widget-container" style="height:100%;width:100%"><div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div></div>';
-  const sc = document.createElement("script");
-  sc.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-  sc.async = true;
-  sc.text = JSON.stringify({
-    symbol: "KRX:K2I1!", interval: "5", timezone: "Asia/Seoul", theme: dark ? "dark" : "light",
-    style: "1", locale: "kr", autosize: true, hide_side_toolbar: true, allow_symbol_change: false,
-    hide_volume: true, calendar: false, support_host: "https://www.tradingview.com"
-  });
-  box.firstChild.appendChild(sc);
-}
+function mountNight(){}
 // ---------- 시장 수급 (코스피 · 코스닥 · 선물) ----------
 let FSEL = 2;                       // 1 개인, 2 외국인, 3 기관
 const FNAMES = ["", "개인", "외국인", "기관"];
