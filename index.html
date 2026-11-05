@@ -137,6 +137,8 @@ td.px{color:var(--ink);font-weight:500}
   background:linear-gradient(90deg,#1D5BC2 0%,#7FA6E6 30%,#C9CDD6 50%,#F09AA4 70%,#D42A3C 100%)}
 .gauge i{position:absolute;top:-4px;width:4px;height:18px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
 .gscale{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);padding:0 4px}
+.nightbox{margin:8px 0 2px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;height:70vh;min-height:420px;max-height:720px}
+.nightbox iframe{display:block;width:100%;height:100%;border:0}
 .golink{display:block;margin:10px 4px 6px;text-align:center;text-decoration:none;font-size:15px;font-weight:700;
   background:var(--ink);color:var(--bg);border-radius:12px;padding:12px}
 .fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 4px 8px}
@@ -399,8 +401,9 @@ function hyCard(hy){
 }
 function nightCard(){
   return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 야간선물</span><span class="munit">18:00~다음 날 06:00</span></div>
-    <a class="golink" href="https://stockhub.kr/night" target="_blank" rel="noopener">야간선물 실시간 보기 ↗</a>
-    <div class="mnote">실시간 시세라 이 앱에는 담을 수 없어서, 야간선물만 보여주는 화면으로 바로 연결해요.</div></div>`;
+    <div class="nightbox"><iframe src="https://stockhub.kr/night" title="코스피200 야간선물" loading="lazy" referrerpolicy="no-referrer"></iframe></div>
+    <a class="golink" href="https://stockhub.kr/night" target="_blank" rel="noopener">화면이 안 보이면 새 창으로 열기 ↗</a>
+    <div class="mnote">실시간 화면을 앱 안에 그대로 띄웠어요. 안쪽을 위아래로 밀어서 볼 수 있어요.</div></div>`;
 }
 function mountNight(){}
 // ---------- 시장 수급 (코스피 · 코스닥 · 선물) ----------
