@@ -170,6 +170,10 @@ td.px{color:var(--ink);font-weight:500}
 .eve-row .ev{color:var(--sub);font-size:12.5px}
 .eve-row .ec{font-weight:700;min-width:62px;text-align:right}
 .eve-row .tg{font-size:10.5px;color:var(--sub);border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:4px}
+.ar{display:inline-block;font-size:11px;font-weight:700;line-height:1;border-radius:5px;padding:3px 4px;margin-right:6px;vertical-align:2px;border:1.5px solid currentColor}
+.ar.up{color:var(--buy)} .ar.down{color:var(--sell)}
+.ar.full.up{background:var(--buy);color:#fff;border-color:var(--buy)}
+.ar.full.down{background:var(--sell);color:#fff;border-color:var(--sell)}
 .empty-sm{color:var(--sub);font-size:14px;padding:10px 4px 12px}
 </style>
 </head>
@@ -222,6 +226,14 @@ const gIndex = k => DATA.groups.indexOf(k);
 const gSum = (s, g) => Math.round(g.inv.reduce((a, i) => a + (s.v[i] || 0), 0) * 10) / 10;
 const gStreak = (s, g) => (s.s || [])[gIndex(g.k)] || 0;
 const streakText = n => !n ? "연속 기록 없음" : `${Math.abs(n)}일 연속 ${n > 0 ? "매수" : "매도"}`;
+function arBadge(s){
+  const a = s && s.a;
+  if (!a) return "";
+  const up = a > 0, full = Math.abs(a) === 1;
+  const tip = full ? (up ? "정배열: 5>10>20>60>120일선" : "역배열: 5<10<20<60<120일선")
+                   : (up ? "20일선이 60일선 위" : "20일선이 60일선 아래");
+  return `<span class="ar ${up ? "up" : "down"}${full ? " full" : ""}" title="${tip}">${up ? "정" : "역"}</span>`;
+}
 const ticks = n => `<span class="ticks ${cls(n)}">${"<i></i>".repeat(Math.min(Math.abs(n), 20))}</span>`;
 
 // ---------- 즐겨찾기 (이 기기에 저장) ----------
@@ -249,7 +261,7 @@ function detailRow(s, code, opt = {}){
   const right = opt.edit ? `<button type="button" class="del" data-del="${esc(code)}">삭제</button>`
                          : `<span class="amt ${cls(v[0])}">${fmt(v[0])}</span>`;
   return `<div class="row" ${opt.edit ? "" : `data-code="${esc(code)}"`}>
-    <div class="top"><span class="name">${esc(s.n)}${all ? '<span class="allbuy">기관 3곳 매수</span>' : ""}</span>
+    <div class="top"><span class="name">${arBadge(s)}${esc(s.n)}${all ? '<span class="allbuy">기관 3곳 매수</span>' : ""}</span>
       ${opt.star ? starBtn(code) : ""}${right}</div>
     <div class="streak">${ticks(ps)}<span>연기금 ${streakText(ps)}</span>${opt.edit ? "" : '<span class="more">일자별 보기 ›</span>'}</div>
     <div class="others">${others}</div>
@@ -280,7 +292,7 @@ function renderGroup(g){
     const split = g.inv.length > 1
       ? `<div class="split">${g.inv.map(j => `<span>${LABELS[j]} <b class="${cls(s.v[j])}">${fmt(s.v[j])}</b></span>`).join("")}</div>` : "";
     return `<div class="row" data-code="${c}"><div class="top">
-      <span class="rank">${i + 1}</span><span class="name">${esc(s.n)}</span>
+      <span class="rank">${i + 1}</span><span class="name">${arBadge(s)}${esc(s.n)}</span>
       <span class="amt ${cls(amt)}">${fmt(amt)}</span><span class="badge ${cls(n)}">${Math.abs(n)}일</span>
     </div>${split}</div>`;
   }).join("");
@@ -290,7 +302,8 @@ function renderGroup(g){
       <button class="s" role="tab" aria-selected="${SIDE === "sell"}" data-side="sell">연속 순매도</button>
     </div>
     <div class="panel">${rows || '<div class="empty">조건에 맞는 종목이 없어요.</div>'}</div>
-    <p class="note">연속 일수가 많은 순서, 같으면 오늘 금액 순서예요. 오늘 ${DATA.minAmt}억 원 이상만 보여요.</p>`;
+    <p class="note">연속 일수가 많은 순서, 같으면 오늘 금액 순서예요. 오늘 ${DATA.minAmt}억 원 이상만 보여요.</p>
+    ${Object.values(DATA.stocks).some(x => x.a) ? `<p class="note"><span class="ar up full">정</span><span class="ar down full">역</span>진한 칸은 5·10·20·60·120일선이 완전히 정배열·역배열, <span class="ar up">정</span><span class="ar down">역</span>테두리 칸은 완전하진 않아서 20일선과 60일선만 비교한 결과예요.</p>` : ""}`;
   document.querySelectorAll("[data-side]").forEach(b => b.onclick = () => { SIDE = b.dataset.side; renderGroup(g); });
 }
 
@@ -522,7 +535,7 @@ function heatCard(){
     <div class="heat">${html}</div>
     <div class="hlegend"><span>−3%</span>${legend}<span>+3%</span></div>
     <div class="mnote">${at}. 네모 크기는 시가총액, 같은 업종끼리 묶었어요. 프리장은 거래가 적어 정규장에서 크게 바뀔 수 있어요.</div>
-    <a class="golink" href="https://kr.tradingview.com/heatmap/stock/" target="_blank" rel="noopener">실시간 히트맵 보기 ↗</a></div>`;
+    <a class="golink" href="https://finviz.com/map.ashx?t=sec" target="_blank" rel="noopener">실시간 히트맵 보기 (핀비즈) ↗</a></div>`;
 }
 
 
@@ -682,7 +695,7 @@ async function openDetail(code){
   const s = DATA.stocks[code];
   if (!s) return;
   OPEN = code;
-  $("sname").textContent = s.n;
+  $("sname").innerHTML = arBadge(s) + esc(s.n);
   paintSheetStar();
   $("sbody").innerHTML = `<div class="empty">불러오는 중…</div>`;
   $("sheet").classList.add("open");

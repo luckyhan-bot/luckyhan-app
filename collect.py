@@ -14,7 +14,8 @@ GROUPS = {
 }
 TRACK = ["연기금", "사모", "투신", "외국인"]   # 연속 일수 계산에 필요한 투자자
 MARKETS = ["KOSPI", "KOSDAQ"]
-HIST_DAYS = 40     # 처음 실행할 때 연속 일수를 거슬러 계산하는 기간(거래일)
+HIST_DAYS = 125    # 거래일 목록 길이 (연속 일수 처음 계산, 이동평균 120일에 사용)
+MA_DAYS = 120      # 정배열·역배열 판단에 쓰는 기간(거래일) — 5·10·20·60·120일선
 DETAIL_DAYS = 20   # 종목 상세(표·차트)에 보여줄 기간(거래일)
 MIN_AMT = 10.0     # 순위에 올릴 최소 금액(억 원)
 TOP_N = 15
@@ -52,6 +53,7 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 
 DIR = os.path.dirname(os.path.abspath(__file__))
 DAYS_DIR = os.path.join(DIR, "days")
+PX_DIR = os.path.join(DIR, "px")
 
 
 def load(name, default):
@@ -482,6 +484,37 @@ def run_flows():
             if f.endswith(".json") and f[:-5] not in detail_days:
                 os.remove(os.path.join(DAYS_DIR, f))
 
+    # 1-2) 종가 기록 (정배열·역배열 판단용) — 오늘은 매번 새로, 지난 날은 없을 때만
+    ma_days = days[-MA_DAYS:]
+    closes = {}
+    for d in ma_days:
+        path = os.path.join(PX_DIR, d + ".json")
+        if d != today and os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                closes[d] = json.load(f)
+            continue
+        print("종가 기록", d)
+        closes[d] = {c: v[0] for c, v in fetch_prices(d).items()}
+        save(os.path.join("px", d + ".json"), closes[d])
+    if os.path.isdir(PX_DIR):
+        for f in os.listdir(PX_DIR):
+            if f.endswith(".json") and f[:-5] not in ma_days:
+                os.remove(os.path.join(PX_DIR, f))
+
+    def align(code):
+        """5·10·20·60·120일선 기준.
+        1: 5>10>20>60>120 완전 정배열, -1: 완전 역배열,
+        2/-2: 완전하진 않을 때 20일선이 60일선 위/아래, 0: 판단 불가(상장 120일 미만 등)"""
+        xs = [closes[d][code] for d in ma_days if code in closes.get(d, {})]
+        if len(xs) < MA_DAYS:
+            return 0
+        m = [sum(xs[-n:]) / n for n in (5, 10, 20, 60, 120)]
+        if all(m[i] > m[i + 1] for i in range(4)):
+            return 1
+        if all(m[i] < m[i + 1] for i in range(4)):
+            return -1
+        return 2 if m[2] > m[3] else -2
+
     # 2) 연속 일수: 어제까지는 저장해 두고 이어서 계산, 오늘 값은 매번 새로 반영
     #    (같은 날 다시 실행해도 두 번 세지 않도록)
     state = load("state.json", {})
@@ -506,6 +539,7 @@ def run_flows():
             s["v"][i] = amt
     for code, s in stocks.items():
         s["s"] = [final[g].get(code, 0) for g in gkeys]
+        s["a"] = align(code)
 
     # 4) watchlist.json 에만 있는 종목(ETF 등)은 따로 받기
     extra = {}
