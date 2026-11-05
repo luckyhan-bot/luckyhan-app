@@ -489,7 +489,8 @@ function heatColor(c){
 }
 function heatCard(){
   const hm = MACRO.heat;
-  if (!hm || !hm.items || !hm.items.length) return "";
+  if (!hm || !hm.items || !hm.items.length)
+    return `<div class="mcard"><div class="mhead"><span class="mn">미국 주요 종목 히트맵</span></div><div class="empty-sm">아직 자료가 없어요. 새 collect.py를 올리고 실행하면 생겨요.</div></div>`;
   const W = 300, H = 400;
   const secs = {};
   hm.items.forEach(it => { (secs[it.s] = secs[it.s] || []).push(it); });
@@ -521,7 +522,8 @@ function heatCard(){
 // ---------- 저녁 8시 전 체크 ----------
 function eveCard(){
   const ev = MACRO.eve;
-  if (!ev || !ev.groups) return "";
+  if (!ev || !ev.groups)
+    return `<div class="mcard"><div class="mhead"><span class="mn">저녁 8시 전 체크</span></div><div class="empty-sm">아직 자료가 없어요. 새 collect.py를 올리고 실행하면 생겨요.</div></div>`;
   const pos = ev.sig.filter(x => x.c > 0.1).length, neg = ev.sig.filter(x => x.c < -0.1).length;
   const mood = pos >= 2 ? ["우호적", "up"] : neg >= 2 ? ["부정적", "down"] : ["엇갈림", "zero"];
   const sigs = ev.sig.map(x => `${x.n} <b class="${cls(x.c)}">${pctFmt(x.c)}</b>`).join(" · ");
