@@ -35,6 +35,27 @@ MACRO = [  # (키, 이름, 야후 티커, 구분)
 ]
 MACRO_DAYS = 200   # 달력 기준 보관 기간
 
+# 국내 업종(섹터) 구성 — 대표 종목을 직접 정해 둠 (빠진 종목·코드 오류는 자동으로 건너뜀)
+SECTORS = [
+    ("반도체", ["005930", "000660", "042700", "403870", "058470", "039030", "240810", "000990", "095340", "357780"]),
+    ("전력/에너지", ["034020", "267260", "010120", "298040", "103590", "000500", "015760", "006260", "001440", "052690"]),
+    ("바이오", ["207940", "068270", "196170", "000100", "128940", "326030", "141080", "028300", "145020", "302440"]),
+    ("IT/플랫폼", ["035420", "035720", "018260", "259960", "036570", "251270", "323410", "377300", "181710", "293490"]),
+    ("지주사", ["402340", "034730", "003550", "000880", "078930", "004800", "001040", "267250"]),
+    ("2차전지", ["373220", "006400", "051910", "247540", "086520", "003670", "066970", "096770", "005070", "278280"]),
+    ("소비재", ["066570", "003230", "090430", "051900", "097950", "271560", "033780", "004370", "192820", "161890"]),
+    ("인프라/건설", ["028260", "000720", "006360", "047040", "375500", "028050", "294870", "002380"]),
+    ("기계", ["000150", "241560", "267270", "454910", "112610"]),
+    ("금융", ["105560", "055550", "086790", "316140", "138040", "032830", "000810", "024110", "071050", "006800"]),
+    ("자동차", ["005380", "000270", "012330", "086280", "011210", "204320", "018880"]),
+    ("조선/해운", ["329180", "009540", "042660", "010140", "011200", "010620", "017960", "028670"]),
+    ("화학/소재", ["005490", "011170", "010130", "004020", "011780", "009830", "010060"]),
+    ("방산", ["012450", "079550", "047810", "064350", "272210", "103140"]),
+    ("K-컬처", ["352820", "035900", "041510", "122870", "035760", "253450", "376300", "278470"]),
+]
+SYNC_CHG = 2.0      # 업종 평균 등락률이 이 % 이상이고
+SYNC_UP = 0.6       # 구성 종목의 이 비율 이상이 올랐으면 '업종 동반 강세'
+
 # 미국 히트맵: 업종별 주요 종목 (시가총액은 실행 때마다 받아옴)
 HEAT = {
     "기술": ["AAPL", "MSFT", "NVDA", "AVGO", "ORCL", "AMD", "CRM", "ADBE", "CSCO", "QCOM", "TXN", "INTC",
@@ -55,6 +76,8 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 DIR = os.path.dirname(os.path.abspath(__file__))
 DAYS_DIR = os.path.join(DIR, "days")
 PX_DIR = os.path.join(DIR, "px")
+SIG_DIR = os.path.join(DIR, "signals")   # 저녁 확정 신호 기록 (성적표용)
+SIG_KEEP = 60                           # 신호 기록 보관 기간(거래일)
 
 
 def load(name, default):
@@ -523,10 +546,11 @@ def run_flows():
             return -1
         return 2 if m[2] > m[3] else -2
 
-    def signal(code, a, flows):
+    def signal(code, a, flows, upto=None):
         """박병창 매매 원칙을 일봉으로 단순화한 신호.
-        반환 [B/S, 원칙 번호, 이유, 손절가(없으면 0), 손바뀜★(1/0)] 또는 None"""
-        bs = [bars[d][code] for d in ma_days if code in bars.get(d, {})]
+        upto: 이 날짜 목록까지의 일봉으로 계산(과거 신호 다시 계산용). 없으면 오늘 기준.
+        반환 [B/S/W/L, 원칙 번호, 이유, 손절가(없으면 0), 손바뀜★(1/0)] 또는 None"""
+        bs = [bars[d][code] for d in (upto or ma_days) if code in bars.get(d, {})]
         if len(bs) < 25:
             return None
         o, h, l, c, v = bs[-1]
@@ -547,19 +571,34 @@ def run_flows():
         half = int(o + body / 2)                       # 황소 50% 룰: 양봉 몸통 절반
 
         # ---- 매도 ----
+        # 매도① 가짜 돌파(개미 낚시): 어제 직전 20일 고점을 넘었는데, 오늘 대량 음봉으로 그 아래로 복귀
+        prev_high2 = max(b[1] for b in bs[-22:-2])
+        if prev_c > prev_high2 and c < prev_high2 and not yang and vr >= 1.5:
+            return ["S", 1, "전고점 돌파 실패(가짜 돌파)", 0, 0]
         if c > ma5:
             # 매도①-1 고점 대량 윗꼬리 (외인·기관이 받아낸 윗꼬리는 매집형으로 보고 제외)
             if vr >= 2 and upper >= 2 * abs(body) and upper >= c * 0.02 and smart <= 0:
-                return ["S", 1, "고점 대량 윗꼬리", 0, 0]
+                if yang:   # 양봉 윗꼬리는 매도가 아니라 '주의' (다음 날 고가 돌파 여부 확인)
+                    return ["W", 1, "고점 대량 윗꼬리 양봉", h, 0]
+                return ["S", 1, "고점 대량 윗꼬리 음봉", 0, 0]
             # 매도①-2 시가 이탈: 갭 상승 출발 후 음봉 마감
             if o >= prev_c * 1.02 and c < o and vr >= 1.5 and smart <= 0:
                 return ["S", 1, "갭 상승 후 시가 이탈 음봉", 0, 0]
             # 매도①-3 거래량 없는 상승: 3일 연속 상승인데 거래량은 3일 연속 감소
             if cs[-1] > cs[-2] > cs[-3] > cs[-4] and vs[-1] < vs[-2] < vs[-3] and vr < 0.8:
                 return ["S", 1, "거래량 없는 상승", 0, 0]
-        # 매도② 20일선 아래로 음봉 이탈
-        if c < ma20 and prev_c >= prev_ma20 and not yang:
-            return ["S", 2, "20일선 음봉 이탈", 0, 0]
+        # 매도② 20일선 이탈 — 20일선이 오르던 중이면 '추세 붕괴', 평평하면(박스권) '주의'
+        ma20_5ago = sum(cs[-25:-5]) / 20
+        rising = ma20 > ma20_5ago * 1.01
+        if c < ma20 and prev_c >= prev_ma20 and not yang and vr >= 1.2:
+            if rising:
+                return ["S", 2, "오르던 20일선을 음봉으로 이탈", 0, 0]
+            return ["W", 2, "평평한 20일선(박스권) 음봉 이탈", l, 0]
+        # 매도② 확정: 어제 20일선을 음봉으로 이탈했고, 오늘 그 봉의 저가까지 깨짐
+        yo, yh, yl, yc, yv = bs[-2]
+        ma20_prev2 = sum(cs[-22:-2]) / 20
+        if yc < prev_ma20 and cs[-3] >= ma20_prev2 and yc < yo and c < yl and c < ma20:
+            return ["S", 2, "20일선 이탈 후 이탈 봉 저가까지 붕괴", 0, 0]
         # 매도② 5일선 -3% 이상 이탈 + 거래량 증가
         if c < ma5 * 0.97 and prev_c >= prev_ma5 and vr >= 1.2:
             return ["S", 2, "5일선 3% 넘게 이탈, 거래량 증가", 0, 0]
@@ -577,7 +616,16 @@ def run_flows():
             return ["B", 2, "20일선 지지 눌림목", int(ma20), star]
         # 매수③ 20일선 아래, 거래량 3배 + 3% 넘는 장대양봉
         if c < ma20 and vr >= 3 and yang and c >= o * 1.03:
+            # 보조 규칙(박병창 원칙 아님): 고가가 내려오는 20일선에 닿고 종가는 그 아래 → 저항에 막힘, '주의'
+            if h >= ma20 * 0.995 and ma20 < ma20_5ago:
+                return ["W", 3, "보조 규칙: 내려오는 20일선 저항에 막힘", int(ma20), star]
             return ["B", 3, "바닥권 대량 장대양봉", half, star]
+        # 바닥 관찰 (매수③ 준비): 역배열 하락 중 밑꼬리 긴 캔들·십자형, 최근 5일 저점을 더 안 낮춤
+        rng = h - l
+        lower = min(o, c) - l
+        if c < ma20 and a < 0 and rng > 0 and l >= min(b[2] for b in bs[-6:-1]):
+            if (lower >= 2 * abs(body) and lower >= c * 0.02) or abs(body) <= rng * 0.1:
+                return ["L", 3, "바닥권 밑꼬리·십자형, 저점 안 낮춤", 0, star]
         return None
 
     # 2) 연속 일수: 어제까지는 저장해 두고 이어서 계산, 오늘 값은 매번 새로 반영
@@ -608,6 +656,9 @@ def run_flows():
         g = signal(code, s["a"], s["v"])
         if g:
             s["g"] = g
+        cl = [bars[d][code][3] for d in ma_days if code in bars.get(d, {})]
+        if len(cl) >= 20:
+            s["m"] = [round(sum(cl[-5:]) / 5), round(sum(cl[-20:]) / 20)]   # 5일선, 20일선 (보유 종목 점검용)
         tb = bars.get(today, {}).get(code)
         pb = bars.get(ma_days[-2], {}).get(code) if len(ma_days) > 1 else None
         if tb:
@@ -648,12 +699,71 @@ def run_flows():
         sell.sort(key=lambda c: (stocks[c]["s"][gi], gval(stocks[c], g)))
         lists[g] = {"buy": buy[:TOP_N], "sell": sell[:TOP_N]}
 
+    # 과거 신호 다시 계산 (최근 DETAIL_DAYS 거래일) — 종목 상세 차트에 신호 난 날을 표시
+    pos = {d: i for i, d in enumerate(ma_days)}
+    hist_days = [d for d in detail_days if d in pos and d != today]
+    hist_flows = {d: load(os.path.join("days", d + ".json"), {}) for d in hist_days}
+    for code, s in stocks.items():
+        hs = []
+        for d in hist_days:
+            fl = hist_flows[d].get(code)
+            g = signal(code, 0, fl[2:8] if fl and len(fl) >= 8 else None, ma_days[:pos[d] + 1])
+            if g:
+                hs.append([f"{d[4:6]}/{d[6:]}", g[0], g[1]])
+        if s.get("g"):
+            hs.append([f"{today[4:6]}/{today[6:]}", s["g"][0], s["g"][1]])
+        if hs:
+            s["h"] = hs
+
+    # 업종별 흐름 + 업종 동조화 (박병창 5번 원칙)
+    sectors = []
+    for name, codes in SECTORS:
+        mem = [c for c in codes if c in stocks and stocks[c].get("p")]
+        if not mem:
+            continue
+        tv_sum = sum(stocks[c]["p"][2] for c in mem)
+        if tv_sum > 0:
+            chg = sum(stocks[c]["p"][1] * stocks[c]["p"][2] for c in mem) / tv_sum   # 거래대금 가중 평균
+        else:
+            chg = sum(stocks[c]["p"][1] for c in mem) / len(mem)
+        up = sum(1 for c in mem if stocks[c]["p"][1] > 0)
+        strong = chg >= SYNC_CHG and up / len(mem) >= SYNC_UP
+        top = sorted(mem, key=lambda c: -stocks[c]["p"][2])
+        sectors.append({"n": name, "tv": round(tv_sum), "chg": round(chg, 2), "up": up, "cnt": len(mem),
+                        "strong": 1 if strong else 0, "codes": top})
+        for c in mem:
+            stocks[c]["sec"] = name
+            if strong:
+                stocks[c]["sy"] = 1
+    sectors.sort(key=lambda x: -x["tv"])
+    print("업종", len(sectors), "개, 동반 강세:", [x["n"] for x in sectors if x["strong"]])
+
+    # 저녁 확정 자료일 때만 오늘 신호를 기록하고 성적표 갱신
+    is_final = not (today == kst_now().strftime("%Y%m%d") and kst_now().strftime("%H%M") < "1600")
+    if is_final:
+        log = []
+        for c, x in stocks.items():
+            g = x.get("g")
+            if g and x.get("p"):
+                log.append([c, x["n"], g[0], g[1], g[2], g[3] if len(g) > 4 else 0,
+                            g[4] if len(g) > 4 else 0, x["p"][0], x.get("a", 0)])
+        save(os.path.join("signals", today + ".json"), log)
+        files = sorted(f for f in os.listdir(SIG_DIR) if f.endswith(".json"))
+        for f in files[:-SIG_KEEP]:
+            os.remove(os.path.join(SIG_DIR, f))
+    try:
+        build_perf(bars, ma_days, today)
+    except Exception as e:
+        print("성적표 건너뜀", e)
+
     # 매매 신호 목록: 거래대금 큰 순서, 각 30개
     def tv(c):
         return (stocks[c].get("p") or [0, 0, 0])[2]
     sig = {"buy": sorted([c for c, x in stocks.items() if x.get("g") and x["g"][0] == "B"], key=lambda c: -tv(c))[:30],
-           "sell": sorted([c for c, x in stocks.items() if x.get("g") and x["g"][0] == "S"], key=lambda c: -tv(c))[:30]}
-    print("매매 신호", len(sig["buy"]), "매수 /", len(sig["sell"]), "매도")
+           "sell": sorted([c for c, x in stocks.items() if x.get("g") and x["g"][0] == "S"], key=lambda c: -tv(c))[:30],
+           "warn": sorted([c for c, x in stocks.items() if x.get("g") and x["g"][0] == "W"], key=lambda c: -tv(c))[:30],
+           "bottom": sorted([c for c, x in stocks.items() if x.get("g") and x["g"][0] == "L"], key=lambda c: -tv(c))[:30]}
+    print("매매 신호", len(sig["buy"]), "매수 /", len(sig["sell"]), "매도 /", len(sig["warn"]), "주의")
 
     save("data.json", {
         "date": f"{today[:4]}-{today[4:6]}-{today[6:]}",
@@ -666,6 +776,7 @@ def run_flows():
         "stocks": stocks,
         "lists": lists,
         "sig": sig,
+        "sectors": sectors,
     })
 
     for old in ("history.json", "detail.json"):   # 예전 방식 파일 정리
@@ -675,7 +786,100 @@ def run_flows():
     print("수급 완료", today, len(stocks), "종목")
 
 
+def build_perf(bars, ma_days, today):
+    """지난 신호 기록을 실제 이후 주가와 비교해 성적표(perf.json) 만들기"""
+    if not os.path.isdir(SIG_DIR):
+        return
+    idx = {d: i for i, d in enumerate(ma_days)}
+    stats, recent, stats_ar = {}, [], {}
+    for f in sorted(os.listdir(SIG_DIR)):
+        d = f[:-5]
+        if d >= today or d not in idx:
+            continue
+        nxt = ma_days[idx[d] + 1: idx[d] + 6]          # 신호 다음 5거래일
+        if not nxt:
+            continue
+        for rec in load(os.path.join("signals", f), []):
+            code, name, typ, n, reason, stop, star, entry = rec[:8]
+            ar = rec[8] if len(rec) > 8 else 0
+            bs = [bars[x][code] for x in nxt if code in bars.get(x, {})]
+            if not bs or not entry:
+                continue
+            r1 = (bs[0][3] / entry - 1) * 100
+            r5 = (bs[-1][3] / entry - 1) * 100
+            mh = (max(b[1] for b in bs) / entry - 1) * 100
+            ml = (min(b[2] for b in bs) / entry - 1) * 100
+            hit_stop = 1 if (stop and min(b[2] for b in bs) <= stop) else 0
+            right = (r1 > 0) if typ in ("B", "L") else (r1 < 0)
+            key = f"{typ}{n}" + ("★" if star else "")
+            st = stats.setdefault(key, {"n": 0, "win": 0, "r1": 0.0, "r5": 0.0, "stop": 0})
+            st["n"] += 1
+            st["win"] += 1 if right else 0
+            st["r1"] += r1
+            st["r5"] += r5
+            st["stop"] += hit_stop
+            if typ == "B" and ar:
+                ka = f"B{n}|" + ("정" if ar > 0 else "역")
+                sa = stats_ar.setdefault(ka, {"n": 0, "win": 0, "r1": 0.0, "r5": 0.0, "stop": 0})
+                sa["n"] += 1
+                sa["win"] += 1 if right else 0
+                sa["r1"] += r1
+                sa["r5"] += r5
+                sa["stop"] += hit_stop
+            recent.append([d, code, name, typ, n, star, reason, round(r1, 2), round(r5, 2),
+                           round(mh, 2), round(ml, 2), hit_stop, len(bs)])
+    for st in list(stats.values()) + list(stats_ar.values()):
+        st["r1"] = round(st["r1"] / st["n"], 2)
+        st["r5"] = round(st["r5"] / st["n"], 2)
+    recent.sort(key=lambda r: r[0], reverse=True)
+    save("perf.json", {"at": kst_now().strftime("%Y-%m-%d %H:%M"), "stats": stats, "stats_ar": stats_ar,
+                       "recent": recent[:150]})
+    print("성적표", sum(s["n"] for s in stats.values()), "건")
+
+
+def run_morning():
+    """아침 시초가 30분 법칙 점검 (09:00~11:00 실행 시): 전 종목 시가·현재가·거래량만 받아 morning.json 저장"""
+    now = kst_now()
+    today = now.strftime("%Y%m%d")
+    files = sorted(f[:-5] for f in os.listdir(PX_DIR) if f.endswith(".json") and f[:-5] < today)[-20:]
+    hist = [load(os.path.join("px", d + ".json"), {}) for d in files]
+    if not hist:
+        raise SystemExit("어제까지 일봉 기록이 없어요. 저녁 실행이 한 번은 돌아야 해요.")
+    prev = hist[-1]
+    cur = fetch_prices(today)
+    if not cur:
+        raise SystemExit("오늘 시세를 아직 못 받았어요.")
+    items = {}
+    for code, (_, _, b) in cur.items():
+        pb = prev.get(code)
+        if not isinstance(pb, list):
+            continue
+        o, h, l, c, v = b
+        pc = pb[3]
+        if not o or not pc:
+            continue
+        vs = [x[code][4] for x in hist if isinstance(x.get(code), list)]
+        vavg = sum(vs) / len(vs) if vs else 0
+        gap = (o / pc - 1) * 100                 # 갭(전일 종가 대비 시가)
+        fo = (c / o - 1) * 100                   # 시가 대비 현재가
+        vr = v / vavg if vavg else 0             # 지금까지 거래량 / 평소 하루 거래량
+        if c >= o and l >= o * 0.99:
+            st = 1                               # 시초가 지지 = 상승 의지
+        elif c < o * 0.99:
+            st = -2 if gap >= 2 else -1          # 갭 띄운 뒤 시가 이탈 = 차익 매물
+        else:
+            st = 0                               # 시초가 근처
+        items[code] = [round(gap, 2), round(fo, 2), round(vr, 2), st, int(o), int(c)]
+    save("morning.json", {"date": f"{today[:4]}-{today[4:6]}-{today[6:]}",
+                          "at": now.strftime("%Y-%m-%d %H:%M"), "items": items})
+    print("아침 체크 완료", len(items), "종목")
+
+
 def main():
+    hm = kst_now().strftime("%H%M")
+    if "0900" <= hm < "1100":      # 아침 실행: 시초가 점검만 하고 끝
+        run_morning()
+        return
     try:
         fetch_macro()
     except Exception as e:
