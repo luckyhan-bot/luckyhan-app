@@ -17,6 +17,9 @@ MARKETS = ["KOSPI", "KOSDAQ"]
 HIST_DAYS = 125    # 거래일 목록 길이 (연속 일수 처음 계산, 이동평균 120일에 사용)
 MA_DAYS = 120      # 정배열·역배열 판단에 쓰는 기간(거래일) — 5·10·20·60·120일선
 DETAIL_DAYS = 20   # 종목 상세(표·차트)에 보여줄 기간(거래일)
+SIG_DAYS = 21      # 매수·매도 신호용 시가·고가·저가·거래량 보관 기간(거래일)
+SIG_MIN_AMT = 10.0 # 신호를 붙일 최소 거래대금(억 원) — 거래가 너무 적은 종목 제외
+SIG_TOP = 30       # 신호 탭에 올릴 종목 수(매수·매도 각각)
 MIN_AMT = 10.0     # 순위에 올릴 최소 금액(억 원)
 TOP_N = 15
 SLEEP = 0.7
@@ -55,6 +58,7 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 DIR = os.path.dirname(os.path.abspath(__file__))
 DAYS_DIR = os.path.join(DIR, "days")
 PX_DIR = os.path.join(DIR, "px")
+OHLC_DIR = os.path.join(DIR, "ohlc")
 
 
 def load(name, default):
@@ -391,19 +395,28 @@ def fetch_day(day, investors):
     return out
 
 
-def fetch_prices(day):
-    """{종목코드: (종가, 등락률, [시가, 고가, 저가, 종가, 거래량])}"""
+_OHLCV = {}
+
+
+def fetch_ohlcv(day):
+    """{종목코드: [시가, 고가, 저가, 종가, 거래량, 등락률]} (같은 실행 안에서는 한 번만 받음)"""
+    if day in _OHLCV:
+        return _OHLCV[day]
     out = {}
     for m in MARKETS:
         df = stock.get_market_ohlcv(day, market=m)
         time.sleep(SLEEP)
         for code, r in df.iterrows():
-            c = float(r["종가"])
-            if c > 0:
-                o = float(r["시가"]) or c
-                out[code] = (int(c), round(float(r["등락률"]), 2),
-                             [int(o), int(float(r["고가"]) or c), int(float(r["저가"]) or c), int(c), int(r["거래량"])])
+            if float(r["종가"]) > 0:
+                out[code] = [int(r["시가"]), int(r["고가"]), int(r["저가"]), int(r["종가"]),
+                             int(r["거래량"]), round(float(r["등락률"]), 2)]
+    _OHLCV[day] = out
     return out
+
+
+def fetch_prices(day):
+    """{종목코드: (종가, 등락률)}"""
+    return {c: (v[3], v[5]) for c, v in fetch_ohlcv(day).items()}
 
 
 def step(prev, v):
@@ -456,6 +469,58 @@ def fetch_detail(code, days, today):
     return rows[::-1]
 
 
+# ---------------- 박병창 매매 원칙 신호 ----------------
+# 일봉(시가·고가·저가·종가·거래량)과 이동평균선, 당일 외국인·기관 수급으로 판단해요.
+# 결과: ["B" 또는 "S", 원칙 번호, 이유, 손절·기준 가격(없으면 None)]
+def signal(bars, closes, flow):
+    """bars: 최근 SIG_DAYS일 [시가, 고가, 저가, 종가, 거래량] (오래된 것 → 오늘)
+    closes: 최근 25일 이상 종가 (오래된 것 → 오늘), flow: (외국인, 기관합계) 당일 순매수(억 원)"""
+    if len(bars) < SIG_DAYS or len(closes) < 25:
+        return None
+    o, h, l, c, v = bars[-1][:5]
+    pc = bars[-2][3]
+    if min(o, h, l, c, pc) <= 0 or v <= 0:
+        return None
+    if c * v / 1e8 < SIG_MIN_AMT:
+        return None
+    prev = bars[:-1]
+    vols = [b[4] for b in prev if b[4] > 0]
+    if not vols:
+        return None
+    vr = v / (sum(vols) / len(vols))                     # 20일 평균 대비 거래량 배수
+    ma = lambda n, k=0: sum(closes[len(closes) - n - k:len(closes) - k]) / n
+    ma5, ma20, pma5, pma20, ma20_5 = ma(5), ma(20), ma(5, 1), ma(20, 1), ma(20, 5)
+    body, rng, upper = abs(c - o), h - l, h - max(o, c)
+    bull, chg = c > o, c / pc - 1
+    hh20 = max(b[1] for b in prev)
+    fx, inst = flow
+    both = fx > 0 and inst > 0
+    tag = " · 외인·기관 동반 매수" if both else ""
+    x = f"거래량 {vr:.1f}배"
+    half = round((o + c) / 2)                            # 황소의 50% 룰: 장대양봉 몸통 절반
+
+    # 매도 먼저 (리스크 관리)
+    if pc > pma5 and h > ma5 and vr >= 2 and rng / pc >= 0.04 and upper >= max(2 * body, rng * 0.5):
+        if not both:
+            return ["S", 1, f"5일선 위 고점 · 긴 윗꼬리 + {x}", None]
+    if pc >= pma20 and c < ma20 and c < ma5 and not bull:
+        return ["S", 2, "20일선 아래로 음봉 이탈 · 추세 붕괴", None]
+    if pc >= pma5 and c < ma5 and c >= ma20 and not bull and chg <= -0.03 and vr >= 1.5:
+        return ["S", 2, f"5일선 이탈 {chg * 100:.1f}% · {x}", None]
+
+    # 매수
+    if c > ma5 > ma20 and bull:
+        if c > hh20 and vr >= 2:
+            return ["B", 1, f"5일선 위 · 20일 고점 돌파 + {x}{tag}", half]
+        if ma5 > pma5 and l <= ma5 * 1.01 and pc >= pma5 and vr < 1.5:
+            return ["B", 1, f"5일선 눌림 후 반등{tag}", round(ma5)]
+    if ma20 < c <= ma5 * 1.01 and ma20 > ma20_5 and l <= ma20 * 1.02 and vr <= 0.7 and c >= o:
+        return ["B", 2, f"20일선 지지 · 거래량 {vr:.1f}배로 줄어든 눌림목{tag}", round(ma20)]
+    if c < ma20 and pc < pma20 and bull and chg >= 0.03 and body >= rng * 0.6 and vr >= 3:
+        return ["B", 3, f"20일선 아래 바닥권 · 대량 장대양봉({x}){tag}", half]
+    return None
+
+
 def run_flows():
     days = business_days()
     try:
@@ -488,26 +553,39 @@ def run_flows():
             if f.endswith(".json") and f[:-5] not in detail_days:
                 os.remove(os.path.join(DAYS_DIR, f))
 
-    # 1-2) 일봉 기록 [시가, 고가, 저가, 종가, 거래량] (정배열·역배열, 매수·매도 신호용)
-    #      오늘은 매번 새로, 지난 날은 없거나 예전 형식(종가만)일 때만 받기
+    # 1-2) 종가 기록 (정배열·역배열 판단용) — 오늘은 매번 새로, 지난 날은 없을 때만
     ma_days = days[-MA_DAYS:]
-    bars = {}
+    closes = {}
     for d in ma_days:
         path = os.path.join(PX_DIR, d + ".json")
         if d != today and os.path.exists(path):
             with open(path, encoding="utf-8") as f:
-                got = json.load(f)
-            if got and isinstance(next(iter(got.values())), list):
-                bars[d] = got
-                continue
-        print("일봉 기록", d)
-        bars[d] = {c: v[2] for c, v in fetch_prices(d).items()}
-        save(os.path.join("px", d + ".json"), bars[d])
-    closes = {d: {c: b[3] for c, b in m.items()} for d, m in bars.items()}
+                closes[d] = json.load(f)
+            continue
+        print("종가 기록", d)
+        closes[d] = {c: v[0] for c, v in fetch_prices(d).items()}
+        save(os.path.join("px", d + ".json"), closes[d])
     if os.path.isdir(PX_DIR):
         for f in os.listdir(PX_DIR):
             if f.endswith(".json") and f[:-5] not in ma_days:
                 os.remove(os.path.join(PX_DIR, f))
+
+    # 1-3) 시가·고가·저가·거래량 기록 (매수·매도 신호용) — 오늘은 매번 새로, 지난 날은 없을 때만
+    sig_days = days[-SIG_DAYS:]
+    bars = {}
+    for d in sig_days:
+        path = os.path.join(OHLC_DIR, d + ".json")
+        if d != today and os.path.exists(path):
+            with open(path, encoding="utf-8") as f:
+                bars[d] = json.load(f)
+            continue
+        print("일봉 기록", d)
+        bars[d] = {c: v[:5] for c, v in fetch_ohlcv(d).items()}
+        save(os.path.join("ohlc", d + ".json"), bars[d])
+    if os.path.isdir(OHLC_DIR):
+        for f in os.listdir(OHLC_DIR):
+            if f.endswith(".json") and f[:-5] not in sig_days:
+                os.remove(os.path.join(OHLC_DIR, f))
 
     def align(code):
         """5·10·20·60·120일선 기준.
@@ -522,47 +600,6 @@ def run_flows():
         if all(m[i] < m[i + 1] for i in range(4)):
             return -1
         return 2 if m[2] > m[3] else -2
-
-    def signal(code, a, flows):
-        """박병창 매매 원칙을 일봉으로 단순화한 신호.
-        반환 [B/S, 원칙 번호, 이유, 수급 동반 여부] 또는 None"""
-        bs = [bars[d][code] for d in ma_days if code in bars.get(d, {})]
-        if len(bs) < 25:
-            return None
-        o, h, l, c, v = bs[-1]
-        cs, vs = [b[3] for b in bs], [b[4] for b in bs]
-        ma5, ma20 = sum(cs[-5:]) / 5, sum(cs[-20:]) / 20
-        prev_ma20 = sum(cs[-21:-1]) / 20
-        vavg = (sum(vs[-21:-1]) / 20) or 1
-        vr = v / vavg                                  # 거래량 배수 (20일 평균 대비)
-        body, upper = c - o, h - max(o, c)
-        prev_high = max(b[1] for b in bs[-21:-1])      # 직전 20일 고점
-        yang = c > o
-        smart = (flows[3] + flows[4]) if flows else 0  # 기관합계 + 외국인
-        indiv = flows[5] if flows else 0
-        star = 1 if (smart > 0 and indiv < 0) else 0
-
-        # 매도 1원칙: 5일선 위 고점 신호 (대량 윗꼬리 / 고점 대량 음봉)
-        if c > ma5 and vr >= 2 and h >= prev_high * 0.98:
-            if upper >= 2 * abs(body) and upper >= c * 0.02:
-                if smart > 0:      # 외국인·기관이 받아낸 윗꼬리는 매집형으로 보고 신호 없음
-                    return None
-                return ["S", 1, "고점 대량 윗꼬리", 0]
-            if not yang:
-                return ["S", 1, "고점 대량 음봉", 0]
-        # 매도 2원칙: 20일선을 음봉으로 이탈
-        if c < ma20 and cs[-2] >= prev_ma20 and not yang:
-            return ["S", 2, "20일선 음봉 이탈", 0]
-        # 매수 1원칙: 5일선 위, 전고점을 대량 양봉으로 돌파
-        if c > ma5 and c > prev_high and vr >= 2 and yang:
-            return ["B", 1, "전고점 대량 돌파", star]
-        # 매수 2원칙: 5~20일선 사이 눌림, 20일선 지지 + 거래량 감소 + 양봉
-        if ma5 > ma20 and ma20 <= c <= ma5 and l >= ma20 * 0.99 and vr < 0.8 and yang:
-            return ["B", 2, "20일선 눌림 지지", star]
-        # 매수 3원칙: 20일선 아래 역배열 바닥권, 평소 3배 이상 거래량의 첫 장대양봉
-        if c < ma20 and a < 0 and vr >= 3 and yang and c >= o * 1.03:
-            return ["B", 3, "바닥권 대량 장대양봉", star]
-        return None
 
     # 2) 연속 일수: 어제까지는 저장해 두고 이어서 계산, 오늘 값은 매번 새로 반영
     #    (같은 날 다시 실행해도 두 번 세지 않도록)
@@ -589,7 +626,13 @@ def run_flows():
     for code, s in stocks.items():
         s["s"] = [final[g].get(code, 0) for g in gkeys]
         s["a"] = align(code)
-        g = signal(code, s["a"], s["v"])
+        try:
+            g = signal([bars[d][code] for d in sig_days if code in bars.get(d, {})],
+                       [closes[d][code] for d in ma_days[-30:] if code in closes.get(d, {})],
+                       (s["v"][INVESTORS.index("외국인")], s["v"][INVESTORS.index("기관합계")]))
+        except Exception as e:
+            print("신호 계산 건너뜀", code, e)
+            g = None
         if g:
             s["g"] = g
 
@@ -627,6 +670,17 @@ def run_flows():
         sell.sort(key=lambda c: (stocks[c]["s"][gi], gval(stocks[c], g)))
         lists[g] = {"buy": buy[:TOP_N], "sell": sell[:TOP_N]}
 
+    # 6) 매수·매도 신호 목록: 거래대금 큰 순서
+    def tamt(c):
+        b = bars[today].get(c)
+        return b[3] * b[4] if b else 0
+    sig = {"buy": [], "sell": []}
+    for c, s in stocks.items():
+        if s.get("g"):
+            sig["buy" if s["g"][0] == "B" else "sell"].append(c)
+    for k in sig:
+        sig[k] = sorted(sig[k], key=lambda c: -tamt(c))[:SIG_TOP]
+
     save("data.json", {
         "date": f"{today[:4]}-{today[4:6]}-{today[6:]}",
         "updated": kst_now().strftime("%Y-%m-%d %H:%M"),
@@ -637,6 +691,7 @@ def run_flows():
         "days": detail_days[::-1],
         "stocks": stocks,
         "lists": lists,
+        "sig": sig,
     })
 
     for old in ("history.json", "detail.json"):   # 예전 방식 파일 정리

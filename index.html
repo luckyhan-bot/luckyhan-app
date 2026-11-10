@@ -56,7 +56,9 @@ h2{font-size:17px;font-weight:700;margin:26px 2px 10px;letter-spacing:-.01em}
 .row:first-child{border-top:0}
 .top{display:flex;align-items:baseline;gap:10px}
 .rank{width:20px;color:var(--sub);font-size:14px;flex:none}
-.name{flex:1;min-width:0;font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name{flex:1;min-width:0;font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center}
+.name .nm{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.name>.ar,.name>.sg,.name>.allbuy{flex:none}
 .amt{font-size:19px;font-weight:700}
 .up{color:var(--buy)} .down{color:var(--sell)} .zero{color:var(--sub)}
 .streak{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13px;color:var(--sub)}
@@ -137,6 +139,7 @@ td.px{color:var(--ink);font-weight:500}
   background:linear-gradient(90deg,#1D5BC2 0%,#7FA6E6 30%,#C9CDD6 50%,#F09AA4 70%,#D42A3C 100%)}
 .gauge i{position:absolute;top:-4px;width:4px;height:18px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
 .gscale{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);padding:0 4px}
+.nightbox{margin:8px 0 2px;border:1px solid var(--line);border-radius:12px;overflow:hidden;height:60vh;min-height:380px;max-height:600px}
 .golink{display:block;margin:10px 4px 6px;text-align:center;text-decoration:none;font-size:15px;font-weight:700;
   background:var(--ink);color:var(--bg);border-radius:12px;padding:12px}
 .fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 4px 8px}
@@ -170,13 +173,19 @@ td.px{color:var(--ink);font-weight:500}
 .eve-row .ev{color:var(--sub);font-size:12.5px}
 .eve-row .ec{font-weight:700;min-width:62px;text-align:right}
 .eve-row .tg{font-size:10.5px;color:var(--sub);border:1px solid var(--line);border-radius:5px;padding:0 4px;margin-left:4px}
+.sg{display:inline-block;font-size:12px;font-weight:700;line-height:1;border-radius:6px;padding:3px 6px;margin-left:6px;vertical-align:2px;white-space:nowrap}
+.sg.b{background:var(--buy-soft);color:var(--buy)} .sg.s{background:var(--sell-soft);color:var(--sell)}
+.sgline{margin:0 0 10px;padding:10px 12px;border-radius:12px;font-size:14px;line-height:1.45}
+.sgline.b{background:var(--buy-soft)} .sgline.s{background:var(--sell-soft)}
+.sgline b{margin-right:6px} .sgline.b b{color:var(--buy)} .sgline.s b{color:var(--sell)}
+.sgline small{display:block;color:var(--sub);font-size:12.5px;margin-top:2px}
+.why{color:var(--sub);font-size:13px;padding:4px 0 0 30px;line-height:1.4}
+.legend{font-size:13px;line-height:1.6;color:var(--sub);padding:12px 14px}
+.legend b{color:var(--ink)}
 .ar{display:inline-block;font-size:11px;font-weight:700;line-height:1;border-radius:5px;padding:3px 4px;margin-right:6px;vertical-align:2px;border:1.5px solid currentColor}
 .ar.up{color:var(--buy)} .ar.down{color:var(--sell)}
 .ar.full.up{background:var(--buy);color:#fff;border-color:var(--buy)}
 .ar.full.down{background:var(--sell);color:#fff;border-color:var(--sell)}
-.sg{display:inline-block;white-space:nowrap;flex:none;font-size:11px;font-weight:700;line-height:1;border-radius:999px;padding:3px 7px;margin-left:6px;vertical-align:2px;color:#fff}
-.sg.b{background:var(--buy)} .sg.s{background:var(--sell)}
-.sgline{display:flex;gap:8px;align-items:flex-start;margin:0 2px 12px;padding:10px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:14px;line-height:1.45}
 .empty-sm{color:var(--sub);font-size:14px;padding:10px 4px 12px}
 </style>
 </head>
@@ -229,25 +238,6 @@ const gIndex = k => DATA.groups.indexOf(k);
 const gSum = (s, g) => Math.round(g.inv.reduce((a, i) => a + (s.v[i] || 0), 0) * 10) / 10;
 const gStreak = (s, g) => (s.s || [])[gIndex(g.k)] || 0;
 const streakText = n => !n ? "연속 기록 없음" : `${Math.abs(n)}일 연속 ${n > 0 ? "매수" : "매도"}`;
-const SG_TXT = {
-  B1: "매수 1원칙 · 5일선 위 주도주: 전고점을 대량 거래 양봉으로 돌파했어요.",
-  B2: "매수 2원칙 · 5~20일선 사이 눌림목: 20일선에서 지지받고, 거래량이 줄며 양봉이 나왔어요.",
-  B3: "매수 3원칙 · 20일선 아래 바닥권: 역배열 하락 중 평소 3배 넘는 거래량의 장대양봉이 나왔어요.",
-  S1: "매도 1원칙 · 5일선 위 고점 신호: 고점에서 대량 거래와 함께 꺾였어요. 절반 분할 매도를 검토하는 구간이에요.",
-  S2: "매도 2원칙 · 추세 붕괴: 20일선을 음봉으로 깨고 내려왔어요. 정한 손절·익절 기준을 확인할 구간이에요."
-};
-const CIRC = ["", "①", "②", "③"];
-function sgBadge(s){
-  const g = s && s.g;
-  if (!g) return "";
-  const buy = g[0] === "B";
-  return `<span class="sg ${buy ? "b" : "s"}" title="${g[2]}">${buy ? "매수" : "매도"}${CIRC[g[1]]}${g[3] ? "★" : ""}</span>`;
-}
-function sgLine(s){
-  const g = s && s.g;
-  if (!g) return "";
-  return `<div class="sgline">${sgBadge(s)}<div>${SG_TXT[g[0] + g[1]]}${g[3] ? "<br>★ 외국인·기관이 사고 개인이 판, 손바뀜이 같이 나왔어요." : ""}</div></div>`;
-}
 function arBadge(s){
   const a = s && s.a;
   if (!a) return "";
@@ -255,6 +245,23 @@ function arBadge(s){
   const tip = full ? (up ? "정배열: 5>10>20>60>120일선" : "역배열: 5<10<20<60<120일선")
                    : (up ? "20일선이 60일선 위" : "20일선이 60일선 아래");
   return `<span class="ar ${up ? "up" : "down"}${full ? " full" : ""}" title="${tip}">${up ? "정" : "역"}</span>`;
+}
+// ---------- 박병창 매매 원칙 신호 ----------
+const CIRC = ["", "①", "②", "③"];
+const SG_NAME = {B: ["", "5일선 위 (주도주)", "5~20일선 사이 (눌림목)", "20일선 아래 (바닥)"],
+                 S: ["", "5일선 위 (고점 신호)", "5·20일선 이탈 (추세 붕괴)"]};
+function sigBadge(s){
+  const g = s && s.g;
+  if (!g) return "";
+  const b = g[0] === "B";
+  return `<span class="sg ${b ? "b" : "s"}" title="${esc(g[2])}">${b ? "매수" : "매도"}${CIRC[g[1]]}</span>`;
+}
+function sigLine(s){
+  const g = s && s.g;
+  if (!g) return "";
+  const b = g[0] === "B";
+  const stop = g[3] ? `<small>${g[1] === 2 ? "20일선" : g[1] === 1 && !/돌파/.test(g[2]) ? "5일선" : "양봉 몸통 절반"} ${g[3].toLocaleString("ko-KR")}원 아래로 내려가면 손절 기준</small>` : "";
+  return `<div class="sgline ${b ? "b" : "s"}"><b>${b ? "매수" : "매도"} ${g[1]}원칙</b>${SG_NAME[g[0]][g[1]]}<small>${esc(g[2])}</small>${stop}</div>`;
 }
 const ticks = n => `<span class="ticks ${cls(n)}">${"<i></i>".repeat(Math.min(Math.abs(n), 20))}</span>`;
 
@@ -283,7 +290,7 @@ function detailRow(s, code, opt = {}){
   const right = opt.edit ? `<button type="button" class="del" data-del="${esc(code)}">삭제</button>`
                          : `<span class="amt ${cls(v[0])}">${fmt(v[0])}</span>`;
   return `<div class="row" ${opt.edit ? "" : `data-code="${esc(code)}"`}>
-    <div class="top"><span class="name">${arBadge(s)}${esc(s.n)}${sgBadge(s)}${all ? '<span class="allbuy">기관 3곳 매수</span>' : ""}</span>
+    <div class="top"><span class="name">${arBadge(s)}<span class="nm">${esc(s.n)}</span>${sigBadge(s)}${all ? '<span class="allbuy">기관 3곳 매수</span>' : ""}</span>
       ${opt.star ? starBtn(code) : ""}${right}</div>
     <div class="streak">${ticks(ps)}<span>연기금 ${streakText(ps)}</span>${opt.edit ? "" : '<span class="more">일자별 보기 ›</span>'}</div>
     <div class="others">${others}</div>
@@ -314,7 +321,7 @@ function renderGroup(g){
     const split = g.inv.length > 1
       ? `<div class="split">${g.inv.map(j => `<span>${LABELS[j]} <b class="${cls(s.v[j])}">${fmt(s.v[j])}</b></span>`).join("")}</div>` : "";
     return `<div class="row" data-code="${c}"><div class="top">
-      <span class="rank">${i + 1}</span><span class="name">${arBadge(s)}${esc(s.n)}${sgBadge(s)}</span>
+      <span class="rank">${i + 1}</span><span class="name">${arBadge(s)}<span class="nm">${esc(s.n)}</span>${sigBadge(s)}</span>
       <span class="amt ${cls(amt)}">${fmt(amt)}</span><span class="badge ${cls(n)}">${Math.abs(n)}일</span>
     </div>${split}</div>`;
   }).join("");
@@ -325,9 +332,38 @@ function renderGroup(g){
     </div>
     <div class="panel">${rows || '<div class="empty">조건에 맞는 종목이 없어요.</div>'}</div>
     <p class="note">연속 일수가 많은 순서, 같으면 오늘 금액 순서예요. 오늘 ${DATA.minAmt}억 원 이상만 보여요.</p>
-    ${Object.values(DATA.stocks).some(x => x.a) ? `<p class="note"><span class="ar up full">정</span><span class="ar down full">역</span>진한 칸은 5·10·20·60·120일선이 완전히 정배열·역배열, <span class="ar up">정</span><span class="ar down">역</span>테두리 칸은 완전하진 않아서 20일선과 60일선만 비교한 결과예요.</p>` : ""}
-    ${Object.values(DATA.stocks).some(x => x.g) ? `<p class="note"><span class="sg b">매수①</span><span class="sg s">매도②</span> 박병창 매매 원칙을 일봉으로 단순화한 신호예요. 동그라미 숫자는 원칙 번호, ★는 외국인·기관 동반 매수예요. 종목을 누르면 이유가 나와요.</p>` : ""}`;
+    ${Object.values(DATA.stocks).some(x => x.a) ? `<p class="note"><span class="ar up full">정</span><span class="ar down full">역</span>진한 칸은 5·10·20·60·120일선이 완전히 정배열·역배열, <span class="ar up">정</span><span class="ar down">역</span>테두리 칸은 완전하진 않아서 20일선과 60일선만 비교한 결과예요.</p>` : ""}`;
   document.querySelectorAll("[data-side]").forEach(b => b.onclick = () => { SIDE = b.dataset.side; renderGroup(g); });
+}
+
+// ---------- 매매 신호 탭 ----------
+function renderSig(){
+  const sig = DATA.sig;
+  if (!sig){ $("view").innerHTML = `<div class="panel" style="margin-top:12px"><div class="empty">아직 신호 자료가 없어요. 새 collect.py로 daily를 한 번 실행하면 생겨요.</div></div>`; return; }
+  const list = sig[SIDE] || [];
+  const rows = list.map((c, i) => {
+    const s = DATA.stocks[c], f = s.v[4], k = s.v[3];
+    return `<div class="row" data-code="${c}"><div class="top">
+      <span class="rank">${i + 1}</span><span class="name">${arBadge(s)}<span class="nm">${esc(s.n)}</span>${sigBadge(s)}</span>
+      <span class="split" style="margin:0"><span>외인 <b class="${cls(f)}">${fmt(f)}</b></span> <span>기관 <b class="${cls(k)}">${fmt(k)}</b></span></span>
+    </div><div class="why">${esc(s.g[2])}</div></div>`;
+  }).join("");
+  $("view").innerHTML = `<p class="gdesc">박병창 매매 원칙을 오늘 일봉에 적용한 결과예요. 거래대금이 큰 순서로 보여요.</p>
+    <div class="tabs" role="tablist">
+      <button class="b" role="tab" aria-selected="${SIDE === "buy"}" data-side="buy">매수 신호</button>
+      <button class="s" role="tab" aria-selected="${SIDE === "sell"}" data-side="sell">매도 신호</button>
+    </div>
+    <div class="panel">${rows || '<div class="empty">오늘은 조건에 맞는 종목이 없어요.</div>'}</div>
+    <div class="panel legend">
+      <b>표시 읽는 법</b><br>
+      <span class="sg b" style="margin:0">매수①</span> 5일선 위: 거래량 터진 고점 돌파, 5일선 눌림 반등<br>
+      <span class="sg b" style="margin:0">매수②</span> 5~20일선 사이: 20일선 지지 + 거래량 줄어든 눌림목<br>
+      <span class="sg b" style="margin:0">매수③</span> 20일선 아래: 바닥권 대량 장대양봉<br>
+      <span class="sg s" style="margin:0">매도①</span> 5일선 위: 거래량 터진 긴 윗꼬리 (고점 신호)<br>
+      <span class="sg s" style="margin:0">매도②</span> 5일선·20일선 이탈 (추세 붕괴)<br>
+      종목을 누르면 이유와 손절 기준 가격이 나와요. 장 마감 일봉으로 판단한 참고용이에요.
+    </div>`;
+  document.querySelectorAll("[data-side]").forEach(b => b.onclick = () => { SIDE = b.dataset.side; renderSig(); });
 }
 
 // ---------- 매크로 탭 ----------
@@ -423,7 +459,7 @@ function hyCard(hy){
 function nightCard(){
   return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 야간선물</span><span class="munit">18:00~다음 날 06:00</span></div>
     <a class="golink" href="https://stockhub.kr/night" target="_blank" rel="noopener">야간선물 실시간 보기 ↗</a>
-    <div class="mnote">실시간 시세라 이 앱에는 담을 수 없어서, 야간선물만 보여주는 화면으로 바로 연결해요.</div></div>`;
+    <div class="mnote">스톡허브와 트레이딩뷰 모두 앱 안에 띄우는 걸 막아둬서, 야간선물 화면으로 바로 연결해요.</div></div>`;
 }
 function mountNight(){}
 // ---------- 시장 수급 (코스피 · 코스닥 · 선물) ----------
@@ -608,12 +644,13 @@ function renderEve(){
     <div class="sec">한눈에 보기</div>${eveCard()}
     <div class="sec">미국 프리장</div>${heatCard()}
     <div class="sec">코스피200 선물</div>${nightCard()}${futCard()}`;
+  mountNight();
   document.querySelectorAll("[data-fsel]").forEach(b => b.onclick = () => { FSEL = +b.dataset.fsel; renderEve(); });
 }
 
 // ---------- 탭 ----------
 function renderTabs(){
-  const tabs = [["macro", "매크로"], ["eve", "8시 전 체크"]].concat(GROUPS.map(g => [g.k, g.tab])).concat([["fav", "즐겨찾기"]]);
+  const tabs = [["macro", "매크로"], ["eve", "8시 전 체크"], ["sig", "매매 신호"]].concat(GROUPS.map(g => [g.k, g.tab])).concat([["fav", "즐겨찾기"]]);
   $("gtabs").innerHTML = tabs.map(([k, t]) => `<button role="tab" data-g="${k}" aria-selected="${k === TAB}">${t}</button>`).join("");
   $("gtabs").querySelectorAll("button").forEach(b => b.onclick = () => { TAB = b.dataset.g; EDIT = false; render(); });
 }
@@ -622,6 +659,7 @@ function render(){
   if (TAB === "macro") return renderMacro();
   if (TAB === "eve") return renderEve();
   if (!DATA){ $("view").innerHTML = `<div class="panel" style="margin-top:12px"><div class="empty">수급 자료가 아직 없어요.</div></div>`; return; }
+  if (TAB === "sig") return renderSig();
   const g = GROUPS.find(x => x.k === TAB);
   if (g) renderGroup(g); else renderFav();
 }
@@ -720,13 +758,13 @@ async function openDetail(code){
   const s = DATA.stocks[code];
   if (!s) return;
   OPEN = code;
-  $("sname").innerHTML = arBadge(s) + esc(s.n);
+  $("sname").innerHTML = arBadge(s) + esc(s.n) + sigBadge(s);
   paintSheetStar();
   $("sbody").innerHTML = `<div class="empty">불러오는 중…</div>`;
   $("sheet").classList.add("open");
   document.body.style.overflow = "hidden";
   if (!history.state || !history.state.sheet) history.pushState({sheet:true}, "");
-  const chips = sgLine(s) + `<div class="chips">${GROUPS.map(g => {
+  const chips = sigLine(s) + `<div class="chips">${GROUPS.map(g => {
     const n = gStreak(s, g);
     return `<span class="chip ${cls(n)}">${g.tab} ${n ? streakText(n) : "연속 없음"}</span>`;
   }).join("")}</div>`;
