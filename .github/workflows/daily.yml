@@ -1,12 +1,15 @@
 name: daily
 on:
   schedule:
+    - cron: "35 0 * * 1-5"   # 평일 09:35 (한국시간) 아침 시초가 30분 점검
     - cron: "50 5 * * 1-5"   # 평일 14:50 (한국시간) 중간 점검
-    - cron: "37 9 * * 1-5"   # 평일 18:37 (한국시간) 최종
-    - cron: "13 10 * * 1-5"  # 평일 19:13 (한국시간) 저녁 8시 전 체크
+    - cron: "13 10 * * 1-5"  # 평일 19:13 (한국시간) 확정 수급 + 매매 신호 + 8시 전 체크
   workflow_dispatch:          # 수동 실행 버튼
 permissions:
   contents: write
+concurrency:            # 예약 실행과 직접 실행이 겹치면 앞의 것이 끝날 때까지 기다렸다가 실행
+  group: daily
+  cancel-in-progress: false
 jobs:
   run:
     runs-on: ubuntu-latest
