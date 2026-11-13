@@ -662,8 +662,11 @@ def run_flows():
         tb = bars.get(today, {}).get(code)
         pb = bars.get(ma_days[-2], {}).get(code) if len(ma_days) > 1 else None
         if tb:
+            prev20 = [bars[d][code] for d in ma_days[-21:-1] if code in bars.get(d, {})]
+            avg_tv = sum(b[3] * b[4] for b in prev20) / len(prev20) if prev20 else 0
             s["p"] = [tb[3], round((tb[3] / pb[3] - 1) * 100, 2) if pb and pb[3] else 0,
-                      round(tb[3] * tb[4] / 1e8)]      # 종가, 등락률, 거래대금(억)
+                      round(tb[3] * tb[4] / 1e8),      # 종가, 등락률, 거래대금(억)
+                      round(tb[3] * tb[4] / avg_tv * 100) if avg_tv else 0]   # 거래대금 / 최근 20일 평균 (%)
 
     # 4) watchlist.json 에만 있는 종목(ETF 등)은 따로 받기
     extra = {}
@@ -827,7 +830,7 @@ def build_perf(bars, ma_days, today):
                 sa["r5"] += r5
                 sa["stop"] += hit_stop
             recent.append([d, code, name, typ, n, star, reason, round(r1, 2), round(r5, 2),
-                           round(mh, 2), round(ml, 2), hit_stop, len(bs)])
+                           round(mh, 2), round(ml, 2), hit_stop, len(bs), ar])
     for st in list(stats.values()) + list(stats_ar.values()):
         st["r1"] = round(st["r1"] / st["n"], 2)
         st["r5"] = round(st["r5"] / st["n"], 2)
@@ -837,10 +840,47 @@ def build_perf(bars, ma_days, today):
     print("성적표", sum(s["n"] for s in stats.values()), "건")
 
 
+PRE_US = [("엔비디아", "NVDA"), ("마이크론", "MU"), ("SK하이닉스 ADR", "SKHY"), ("AMD", "AMD"),
+          ("브로드컴", "AVGO"), ("TSMC", "TSM"), ("반도체 ETF", "SOXX"), ("나스닥100 선물", "NQ=F")]
+
+
+def fetch_pre_us():
+    """개장 전 체크: 미국 주요 반도체의 정규장 등락 + 시간외(애프터마켓) 등락"""
+    import yfinance as yf
+    out = []
+    for name, t in PRE_US:
+        try:
+            info = yf.Ticker(t).info
+            reg = float(info.get("regularMarketChangePercent") or 0)
+            post = info.get("postMarketChangePercent")
+            out.append({"n": name, "t": t, "reg": round(reg, 2),
+                        "post": round(float(post), 2) if post is not None else None})
+        except Exception as e:
+            print("개장 전 체크 건너뜀", t, e)
+        time.sleep(0.3)
+    return out
+
+
 def run_morning():
-    """아침 시초가 30분 법칙 점검 (09:00~11:00 실행 시): 전 종목 시가·현재가·거래량만 받아 morning.json 저장"""
+    """아침 실행 (08:00~11:00): 미국 시간외(개장 전 체크) + 시초가 30분 점검 + 아침 업종 흐름 → morning.json"""
     now = kst_now()
     today = now.strftime("%Y%m%d")
+    hm = now.strftime("%H%M")
+    prev_m = load("morning.json", {})
+    out = {"date": f"{today[:4]}-{today[4:6]}-{today[6:]}", "at": now.strftime("%Y-%m-%d %H:%M"),
+           "items": {}, "sectors": []}
+    try:
+        out["pre"] = fetch_pre_us()
+        out["pre_at"] = out["at"]
+    except Exception as e:
+        print("개장 전 체크 실패", e)
+    if hm < "0900":                       # 장 시작 전: 개장 전 체크만
+        if prev_m.get("date") == out["date"]:
+            out["items"], out["sectors"] = prev_m.get("items", {}), prev_m.get("sectors", [])
+        save("morning.json", out)
+        print("개장 전 체크 완료 (장 시작 전이라 시초가 점검은 9시 이후 실행에서)")
+        return
+
     files = sorted(f[:-5] for f in os.listdir(PX_DIR) if f.endswith(".json") and f[:-5] < today)[-20:]
     hist = [load(os.path.join("px", d + ".json"), {}) for d in files]
     if not hist:
@@ -869,15 +909,48 @@ def run_morning():
             st = -2 if gap >= 2 else -1          # 갭 띄운 뒤 시가 이탈 = 차익 매물
         else:
             st = 0                               # 시초가 근처
-        items[code] = [round(gap, 2), round(fo, 2), round(vr, 2), st, int(o), int(c)]
-    save("morning.json", {"date": f"{today[:4]}-{today[4:6]}-{today[6:]}",
-                          "at": now.strftime("%Y-%m-%d %H:%M"), "items": items})
-    print("아침 체크 완료", len(items), "종목")
+        items[code] = [round(gap, 2), round(fo, 2), round(vr, 2), st, int(o), int(c),
+                       round((c / pc - 1) * 100, 2),        # 전일 대비 등락률
+                       round(c * v / 1e8)]                  # 지금까지 거래대금(억)
+    out["items"] = items
+
+    # 코스피·코스닥: 오늘 장중 지수(잠정 캔들) + 시장 전체 투자자별 수급(잠정)
+    try:
+        out["mflows"] = fetch_market_flows()
+    except Exception as e:
+        print("아침 시장 수급 실패", e)
+    try:
+        import yfinance as yf
+        midx = {}
+        for key, t in (("kospi", "^KS11"), ("kosdaq", "^KQ11")):
+            h = yf.Ticker(t).history(period="5d", interval="1d")
+            midx[key] = [[d.strftime("%Y-%m-%d"), round(float(r["Open"]), 2), round(float(r["High"]), 2),
+                          round(float(r["Low"]), 2), round(float(r["Close"]), 2)] for d, r in h.iterrows()]
+        out["midx"] = midx
+    except Exception as e:
+        print("아침 지수 실패", e)
+
+    # 아침 업종별 흐름 (가격·거래대금만, 수급은 아침엔 없음)
+    secs = []
+    for name, codes in SECTORS:
+        mem = [c for c in codes if c in items]
+        if not mem:
+            continue
+        tv_sum = sum(items[c][7] for c in mem)
+        chg = (sum(items[c][6] * items[c][7] for c in mem) / tv_sum) if tv_sum else \
+              sum(items[c][6] for c in mem) / len(mem)
+        up = sum(1 for c in mem if items[c][6] > 0)
+        secs.append({"n": name, "tv": tv_sum, "chg": round(chg, 2), "up": up, "cnt": len(mem),
+                     "strong": 1 if (chg >= SYNC_CHG and up / len(mem) >= SYNC_UP) else 0,
+                     "codes": sorted(mem, key=lambda c: -items[c][7])})
+    out["sectors"] = sorted(secs, key=lambda x: -x["tv"])
+    save("morning.json", out)
+    print("아침 체크 완료", len(items), "종목, 업종", len(secs), "개")
 
 
 def main():
     hm = kst_now().strftime("%H%M")
-    if "0900" <= hm < "1100":      # 아침 실행: 시초가 점검만 하고 끝
+    if "0800" <= hm < "1100":      # 아침 실행: 개장 전 체크·시초가 점검·아침 업종만 하고 끝
         run_morning()
         return
     try:
