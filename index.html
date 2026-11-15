@@ -98,7 +98,7 @@ td.px{color:var(--ink);font-weight:500}
 
 .gtabs{display:flex;gap:6px;overflow-x:auto;margin:8px -16px 0;padding:2px 16px 4px;scrollbar-width:none}
 .gtabs::-webkit-scrollbar{display:none}
-.gtabs button{flex:none;font:inherit;font-size:15px;font-weight:500;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:8px 14px}
+.gtabs button{flex:none;font:inherit;font-size:15px;font-weight:500;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:6px 14px;line-height:1.25}
 .gtabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .gdesc{color:var(--sub);font-size:13px;margin:10px 2px 0}
 .split{font-size:12.5px;color:var(--sub);margin:5px 0 0 30px;display:flex;flex-wrap:wrap;gap:2px 10px}
@@ -193,6 +193,10 @@ td.px{color:var(--ink);font-weight:500}
 .holdbar{display:block;width:100%;text-align:left;font:inherit;font-size:14.5px;font-weight:700;border:0;border-radius:12px;padding:12px 14px;margin:6px 0 4px;background:var(--sell-soft);color:var(--sell)}
 .holdform{display:flex;gap:8px;margin:0 2px 12px}
 .holdform input{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--ink);background:var(--panel);border:1.5px solid var(--line);border-radius:10px;padding:9px 12px}
+.tt{display:block;font-size:11px;font-weight:500;color:var(--sub);margin-top:1px;white-space:nowrap}
+.gtabs button[aria-selected="true"] .tt{color:inherit;opacity:.75}
+.tabwhen{margin:8px 2px 0;padding:8px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font-size:13px;color:var(--sub);line-height:1.5}
+.tabwhen b{color:var(--ink)}
 .empty-sm{color:var(--sub);font-size:14px;padding:10px 4px 12px}
 </style>
 </head>
@@ -209,6 +213,7 @@ td.px{color:var(--ink);font-weight:500}
       <button id="go" type="button">조회</button>
     </div>
     <div class="gtabs" role="tablist" id="gtabs"></div>
+
   </div>
   <div id="holdwrap"></div>
   <div id="result"></div>
@@ -1015,10 +1020,42 @@ function renderSig(){
 }
 
 // ---------- 탭 ----------
+function tabTime(k){
+  const dU = DATA && DATA.updated;
+  const t = k === "macro" ? (MACRO && MACRO.updated)
+          : k === "morning" ? (MORNING && MORNING.at)
+          : k === "eve" ? (MACRO && MACRO.eve && MACRO.eve.at) : dU;
+  if (!t) return "자료 없음";
+  if (!/^\d{4}-\d\d-\d\d/.test(t)) return t;
+  const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+  const hm = t.slice(11, 16);
+  const lab = t.slice(0, 10) === today ? hm : `${+t.slice(5, 7)}/${+t.slice(8, 10)} ${hm}`;
+  const isData = !(k === "macro" || k === "morning" || k === "eve");
+  return lab + (isData && DATA && !DATA.final ? " 잠정" : "");
+}
 function renderTabs(){
   const tabs = [["macro", "매크로"], ["morning", "아침 체크"], ["eve", "8시 전 체크"], ["sig", "매매 신호"]].concat(GROUPS.map(g => [g.k, g.tab])).concat([["fav", "즐겨찾기"]]);
-  $("gtabs").innerHTML = tabs.map(([k, t]) => `<button role="tab" data-g="${k}" aria-selected="${k === TAB}">${t}</button>`).join("");
+  $("gtabs").innerHTML = tabs.map(([k, t]) => `<button role="tab" data-g="${k}" aria-selected="${k === TAB}">${t}<span class="tt">${tabTime(k)}</span></button>`).join("");
   $("gtabs").querySelectorAll("button").forEach(b => b.onclick = () => { TAB = b.dataset.g; EDIT = false; render(); });
+}
+function whenFmt(t){
+  if (!t) return "아직 없음";
+  const DOW = "일월화수목금토", d = new Date(t.slice(0, 10) + "T00:00:00");
+  return `${+t.slice(5, 7)}/${+t.slice(8, 10)}(${DOW[d.getDay()]}) ${t.slice(11, 16)}`;
+}
+function renderWhen(){
+  const el = document.getElementById("tabwhen"); if (!el) return;
+  const dU = DATA && DATA.updated, mU = MACRO && MACRO.updated;
+  const map = {
+    macro:   [mU, "오전 11시 이후 실행할 때 바뀌어요 (지수·금리·업종·심리)"],
+    morning: [MORNING && MORNING.at, "오전 8~11시에 실행할 때만 바뀌어요 (8~9시는 개장 전 체크만)"],
+    eve:     [MACRO && MACRO.eve && MACRO.eve.at, "오전 11시 이후 실행할 때 바뀌어요. 저녁 7시 이후 실행이 가장 정확해요"],
+    sig:     [dU, "오전 11시 이후 실행할 때 바뀌어요. 오후 4시 이후 실행분이 확정이에요"],
+    fav:     [dU, "오전 11시 이후 실행할 때 바뀌어요. 보유 종목 점검은 오후 4시 이후 실행분이 확정이에요"]
+  };
+  const m = map[TAB] || [dU, "오전 11시 이후 실행할 때 바뀌어요. 오후 4시 이후 실행분이 확정이에요"];
+  const final = (TAB === "sig" || TAB === "fav" || !map[TAB]) && DATA ? (DATA.final ? " · 확정" : " · 장중 잠정") : "";
+  el.innerHTML = `🕒 이 탭 자료: <b>${whenFmt(m[0])}</b>${final}<br>${m[1]}`;
 }
 function render(){
   renderTabs();
