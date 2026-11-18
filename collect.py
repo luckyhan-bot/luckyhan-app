@@ -905,6 +905,8 @@ def run_morning():
         vr = v / vavg if vavg else 0             # 지금까지 거래량 / 평소 하루 거래량
         if c >= o and l >= o * 0.99:
             st = 1                               # 시초가 지지 = 상승 의지
+        elif c >= o * 1.01:
+            st = 3                               # 장 초반 시초가 아래로 눌렸다가 다시 뚫고 올라감 (1원칙 진입 타이밍)
         elif c < o * 0.99:
             st = -2 if gap >= 2 else -1          # 갭 띄운 뒤 시가 이탈 = 차익 매물
         else:

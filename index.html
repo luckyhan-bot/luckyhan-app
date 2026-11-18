@@ -137,6 +137,10 @@ td.px{color:var(--ink);font-weight:500}
   background:linear-gradient(90deg,#1D5BC2 0%,#7FA6E6 30%,#C9CDD6 50%,#F09AA4 70%,#D42A3C 100%)}
 .gauge i{position:absolute;top:-4px;width:4px;height:18px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
 .gscale{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);padding:0 4px}
+.qbar{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px}
+.qbar a{display:block;text-align:center;text-decoration:none;font-size:15px;font-weight:700;padding:11px 0;border-radius:12px;background:var(--ink);color:var(--bg)}
+.gtabs button.unseen{border-color:var(--buy);color:var(--buy)}
+.gtabs button.unseen::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--buy);margin-left:5px;vertical-align:4px}
 .golink{display:block;margin:10px 4px 6px;text-align:center;text-decoration:none;font-size:15px;font-weight:700;
   background:var(--ink);color:var(--bg);border-radius:12px;padding:12px}
 .fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 4px 8px}
@@ -370,7 +374,12 @@ function holdBanner(){
   if (!DATA) return "";
   const bad = Object.keys(HOLD).filter(c => { const st = holdStatus(c); return st && st.danger; });
   if (!bad.length) return "";
-  return `<button type="button" class="holdbar" id="holdbar">⚠️ 보유 종목 ${bad.length}개가 매도 기준에 닿았어요: ${bad.map(c => esc(DATA.stocks[c].n)).join(", ")} ›</button>`;
+  const lab = c => {
+    const g = normG(DATA.stocks[c].g);
+    if (g && g[0] === "S") return `매도${CIRC[g[1]] || ""}`;
+    return "손절선 이탈";
+  };
+  return `<button type="button" class="holdbar" id="holdbar">${bad.map(c => `⚠️ ${lab(c)}: ${esc(DATA.stocks[c].n)}`).join("<br>")} ›</button>`;
 }
 
 // ---------- 종목 행 (즐겨찾기 / 검색 결과) ----------
@@ -760,6 +769,12 @@ function renderMacro(){
   const ranges = [[21, "1개월"], [63, "3개월"], [126, "6개월"]];
   const sec = g => MACRO.items.filter(i => i.g === g).map(i => macroCard(i) + "").join("");
   $("view").innerHTML = `
+    <div class="qbar">
+      <a href="https://github.com/luckyhan-bot/luckyhan-app/actions/workflows/daily.yml" target="_blank" rel="noopener">실행</a>
+      <a href="https://finviz.com/map.ashx?t=sec" target="_blank" rel="noopener">핀비즈</a>
+      <a href="https://kr.investing.com/indices/nq-100-futures" target="_blank" rel="noopener">나선</a>
+      <a href="https://stockhub.kr/night" target="_blank" rel="noopener">야선</a>
+    </div>
     <div class="top-tools"><p class="gdesc">일봉 차트</p>
       ${ranges.map(([n, t]) => `<button type="button" class="tool ${RANGE === n ? "on" : ""}" data-range="${n}">${t}</button>`).join("")}</div>
     <div class="sec">지수</div>${sec("지수")}
@@ -849,20 +864,21 @@ function renderPick(){
   const m = eveMood();
   const list = pickList();
   const moodLine = m
-    ? `<div class="eve-sum" style="margin:10px 0"><span>8시 전 체크</span><b class="${m.ok ? "up" : m.label === "부정적" ? "down" : "zero"}">${m.label}</b><span class="munit">${shortDate(m.at)} ${m.at.slice(11)} 기준</span></div>`
-    : `<div class="empty-sm">8시 전 체크 자료가 아직 없어요.</div>`;
+    ? `<div class="eve-sum" style="margin:10px 0"><span>저녁체크</span><b class="${m.ok ? "up" : m.label === "부정적" ? "down" : "zero"}">${m.label}</b><span class="munit">${shortDate(m.at)} ${m.at.slice(11)} 기준</span></div>`
+    : `<div class="empty-sm">저녁체크 자료가 아직 없어요.</div>`;
   const rest = m && !m.ok
     ? `<div class="panel"><div class="empty">오늘은 해외 분위기가 우호적이 아니라 <b>쉬어가는 날</b>이에요. 아래는 참고만 하세요.</div></div>` : "";
   return `${moodLine}${rest}
     <div class="panel" style="margin-top:8px">${list.map(sigRow).join("") || '<div class="empty">오늘은 조건에 맞는 후보가 없어요. 쉬어가는 날이에요.</div>'}</div>
     <p class="note"><b>오늘 후보 조건</b><br>
-    8시 전 체크 '우호적' + 매수①★ → 매수① → 매수②★ → 매수② 순서 + 외국인 연속 매도 경고 없는 종목<br>
+    저녁체크 '우호적' + 매수①★ → 매수① → 매수②★ → 매수② 순서 + 외국인 연속 매도 경고 없는 종목<br>
     같은 등급 안에서는 정배열 → 업종 동반 강세 → 거래대금 순서예요<br>
     괄호 안 %는 지금 가격에서 손절가까지 거리예요. 이만큼 손실을 감수할 수 있을 때만 들어가세요.<br>
     '평소의 ○%'는 오늘 거래대금이 최근 20일 평균의 몇 %인지예요. 200% 넘으면 빨간색이에요.</p>`;
 }
 const MST = {
   "1":  ["시초가 지지 ✅", "up", "시초가를 지키는 중 → 상승 의지"],
+  "3":  ["시초가 재돌파 ✅", "up", "장 초반 시초가 아래로 눌렸다가 다시 뚫고 올라감 → 1원칙 매수 타이밍"],
   "0":  ["시초가 근처", "zero", "방향 탐색 중 → 관망"],
   "-1": ["시초가 아래 ⚠️", "down", "시초가를 깨고 내려감"],
   "-2": ["갭 상승 후 시초가 이탈 ⚠️", "down", "갭으로 띄운 뒤 밀림 → 차익 매물, 비중 축소 검토"]
@@ -920,7 +936,7 @@ function renderMorningTab(){
     const h = HOLD[c], m = MORNING.items[c], cur = m[5];
     const ret = (cur / h.p - 1) * 100, stop5 = Math.round(h.p * 0.95);
     const warn = cur <= stop5 ? `<br><b style="color:var(--sell)">⚠️ 지금 가격이 −5% 선(${num(stop5, 0)}원) 아래예요</b>` : "";
-    return morningRow(c, i).replace(/<\/div><\/div>$/, `<br>내 매수가 ${num(h.p, 0)}원 → 지금 ${num(cur, 0)}원 (<b class="${cls(ret)}">${pctFmt(ret)}</b>)${warn}</div></div>`);
+    return morningRow(c, i).replace(/<\/div><\/div>$/, `<br>내 매수가 ${num(h.p, 0)}원 → 지금 ${num(cur, 0)}원 (<span style="font-weight:700;color:${ret >= 0 ? "var(--buy)" : "var(--sell)"}">${pctFmt(ret)}</span>)${warn}</div></div>`);
   }).join("");
   const hasItems = Object.keys(MORNING.items || {}).length > 0;
   $("view").innerHTML = `${head}${stale}
@@ -937,6 +953,7 @@ function renderMorningTab(){
     `<div class="panel"><div class="empty">시초가 점검은 오전 9시 이후 실행에서 생겨요.</div></div>`}
     <p class="note"><b>시초가 30분 법칙</b><br>
     9시 30분까지 그날 방향이 대부분 보여요. 시초가를 지키면 상승 의지, 갭으로 띄운 뒤 시초가를 깨면 차익 매물이 나오는 날로 봐요.<br>
+    판정 기준: <b>지지</b> = 지금 가격이 시가 이상이고 장중 시가보다 1% 넘게 안 빠짐 · <b>재돌파</b> = 시가보다 1% 넘게 눌렸다가 다시 시가 +1% 위 · <b>아래</b> = 시가보다 1% 넘게 아래 · <b>근처</b> = 시가 ±1% 안<br>
     거래량은 실행 시각까지 거래량이 평소 하루 거래량의 몇 %인지예요. 30% 조용·활발 경계, 50% 넘으면 평소보다 많음, 100% 넘으면 폭발적이에요. 늦게 실행할수록 %가 커져요.</p>`;
   bindSectors();
   document.querySelectorAll("[data-fsel]").forEach(b => b.onclick = () => { FSEL = +b.dataset.fsel; renderMorningTab(); });
@@ -1033,9 +1050,24 @@ function tabTime(k){
   const isData = !(k === "macro" || k === "morning" || k === "eve");
   return lab + (isData && DATA && !DATA.final ? " 잠정" : "");
 }
+const MSKEY = "macro-seen-v1";
+function macroUnseen(){
+  const u = MACRO && MACRO.updated;
+  if (!u || !/^\d{4}-\d\d-\d\d \d\d:\d\d/.test(u) || u.slice(11, 13) < "16") return false;   // 저녁(16시 이후) 실행 자료만
+  let seen = ""; try { seen = localStorage.getItem(MSKEY) || ""; } catch (e) {}
+  return seen !== u;
+}
+function markMacroSeen(){
+  if (TAB !== "macro" || !macroUnseen()) return;
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 60){
+    try { localStorage.setItem(MSKEY, MACRO.updated); } catch (e) {}
+    renderTabs();
+  }
+}
+window.addEventListener("scroll", markMacroSeen, {passive: true});
 function renderTabs(){
-  const tabs = [["macro", "매크로"], ["morning", "아침 체크"], ["eve", "8시 전 체크"], ["sig", "매매 신호"]].concat(GROUPS.map(g => [g.k, g.tab])).concat([["fav", "즐겨찾기"]]);
-  $("gtabs").innerHTML = tabs.map(([k, t]) => `<button role="tab" data-g="${k}" aria-selected="${k === TAB}">${t}<span class="tt">${tabTime(k)}</span></button>`).join("");
+  const tabs = [["macro", "매크로"], ["morning", "아침체크"], ["eve", "저녁체크"], ["fav", "즐겨찾기"], ["sig", "매매신호"]].concat(GROUPS.map(g => [g.k, g.tab]));
+  $("gtabs").innerHTML = tabs.map(([k, t]) => `<button role="tab" data-g="${k}" aria-selected="${k === TAB}" class="${k === "macro" && macroUnseen() ? "unseen" : ""}">${t}<span class="tt">${tabTime(k)}</span></button>`).join("");
   $("gtabs").querySelectorAll("button").forEach(b => b.onclick = () => { TAB = b.dataset.g; EDIT = false; render(); });
 }
 function whenFmt(t){
