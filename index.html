@@ -448,7 +448,7 @@ function renderFav(){
       <button type="button" class="tool ${EDIT ? "on" : ""}" id="edit">${EDIT ? "완료" : "편집"}</button></div>
     ${FGROUPS.length || EDIT ? bar : ""}${add}
     <div class="panel">${rows || '<div class="empty">' + (FAVS.length ? "이 그룹에 종목이 없어요. 편집을 눌러 종목 오른쪽에서 그룹을 고르세요." : "즐겨찾기가 비어 있어요. 위에서 종목을 검색해 ☆를 눌러 추가하세요.") + '</div>'}</div>
-    <p class="note">즐겨찾기와 그룹은 이 기기에 저장돼요. 현재가는 마지막 실행 때 받은 값이에요.</p>`;
+    <p class="note">즐겨찾기와 그룹은 이 기기에 저장돼요. 현재가는 마지막 실행 때 받은 값이에요. <button type="button" class="tool" id="rsync">리포트 앱 연동</button></p>`;
   $("edit").onclick = () => { EDIT = !EDIT; renderFav(); };
   const fa = document.getElementById("fgadd");
   if (fa) fa.onsubmit = ev => {
@@ -1413,6 +1413,57 @@ function openHero(code){
     $("meta").textContent = "새 방식 자료를 기다리는 중이에요. Actions에서 daily를 실행해 주세요.";
   }
   render();
+})();
+</script>
+<script>
+// ---------- 리포트 앱 연동: 즐겨찾기·보유 종목(코드·이름만)을 저장소 portfolio-sync 브랜치의 portfolio.json에 저장 ----------
+// 매수가 등 보유 상세는 올리지 않음. 토큰은 이 기기에만 저장.
+(function(){
+  const REPO = "luckyhan-bot/luckyhan-app", BR = "portfolio-sync", FILE = "portfolio.json", TK = "report-sync-token";
+  const API = "https://api.github.com/repos/" + REPO;
+  const token = () => { try { return localStorage.getItem(TK) || ""; } catch (e) { return ""; } };
+  const b64 = s => btoa(unescape(encodeURIComponent(s)));
+  let timer = null, last = "";
+  async function gh(path, opt){
+    const r = await fetch(API + path, Object.assign({}, opt, {headers: {"Authorization": "Bearer " + token(), "Accept": "application/vnd.github+json"}}));
+    return r;
+  }
+  function snapshot(){
+    const nm = c => (typeof DATA !== "undefined" && DATA && DATA.stocks[c] && DATA.stocks[c].n) || c;
+    return {
+      favs: (typeof FAVS !== "undefined" ? FAVS : []).map(f => ({c: f.c, n: f.n || nm(f.c)})),
+      holds: Object.keys(typeof HOLD !== "undefined" ? HOLD : {}).map(c => ({c, n: nm(c)}))
+    };
+  }
+  async function push(){
+    if (!token()) return;
+    const snap = snapshot(), body = JSON.stringify(snap);
+    if (body === last) return;
+    try {
+      let ref = await gh("/git/ref/heads/" + BR);
+      if (ref.status === 404) {                       // 브랜치가 없으면 main에서 만든다
+        const main = await (await gh("/git/ref/heads/main")).json();
+        await gh("/git/refs", {method: "POST", body: JSON.stringify({ref: "refs/heads/" + BR, sha: main.object.sha})});
+      }
+      const cur = await gh("/contents/" + FILE + "?ref=" + BR);
+      const sha = cur.ok ? (await cur.json()).sha : undefined;
+      const content = JSON.stringify(Object.assign({updated: new Date().toISOString()}, snap), null, 1);
+      const r = await gh("/contents/" + FILE, {method: "PUT", body: JSON.stringify({message: "portfolio sync", content: b64(content), branch: BR, sha})});
+      if (r.ok) last = body;
+    } catch (e) {}
+  }
+  const later = () => { clearTimeout(timer); timer = setTimeout(push, 1500); };
+  const wrap = name => { const f = window[name]; if (typeof f === "function") window[name] = function(){ const v = f.apply(this, arguments); later(); return v; }; };
+  wrap("saveFavs"); wrap("saveHold");
+  document.addEventListener("click", e => {
+    if (!e.target || e.target.id !== "rsync") return;
+    const cur = token();
+    const v = prompt("리포트 앱 연동용 GitHub 토큰을 붙여넣으세요.\n(luckyhan-app 저장소 Contents 읽기·쓰기 권한만 있는 fine-grained 토큰)\n비워두고 확인하면 연동을 끕니다." + (cur ? "\n\n현재: 연동 중" : ""), "");
+    if (v === null) return;
+    try { if (v.trim()) localStorage.setItem(TK, v.trim()); else localStorage.removeItem(TK); } catch (err) {}
+    if (v.trim()) { last = ""; push().then(() => alert(last ? "연동 완료: 즐겨찾기·보유 종목을 저장했어요." : "저장 실패: 토큰 권한을 확인해 주세요.")); }
+  });
+  setTimeout(later, 4000);                            // 앱을 열 때도 한 번 맞춰 둔다
 })();
 </script>
 </body>
