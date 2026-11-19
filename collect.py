@@ -46,6 +46,7 @@ SECTORS = [
     ("소비재", ["066570", "003230", "090430", "051900", "097950", "271560", "033780", "004370", "192820", "161890"]),
     ("인프라/건설", ["028260", "000720", "006360", "047040", "375500", "028050", "294870", "002380"]),
     ("기계", ["000150", "241560", "267270", "454910", "112610"]),
+    ("로봇", ["277810", "454910", "232680", "108490", "058610", "117730"]),
     ("금융", ["105560", "055550", "086790", "316140", "138040", "032830", "000810", "024110", "071050", "006800"]),
     ("자동차", ["005380", "000270", "012330", "086280", "011210", "204320", "018880"]),
     ("조선/해운", ["329180", "009540", "042660", "010140", "011200", "010620", "017960", "028670"]),
@@ -340,6 +341,29 @@ def fetch_macro():
     except Exception as e:
         print("하이일드 건너뜀(지난 자료 사용)", e)
         out["hy"] = prev.get("hy")
+
+    try:  # CD91 금리 (네이버 금융 일별 시세, 단위 %)
+        import re
+        seen = {}
+        for page in range(1, 14):
+            r = get_retry(f"https://finance.naver.com/marketindex/interestDailyQuote.naver?marketindexCd=IRR_CD91&page={page}")
+            html = r.content.decode("euc-kr", "ignore")
+            got = re.findall(r'(\d{4})\.(\d{2})\.(\d{2})\s*</td>\s*<td[^>]*>\s*([\d.]+)', html)
+            if not got:
+                break
+            for y, m, d, v in got:
+                seen[f"{y}-{m}-{d}"] = round(float(v), 2)
+            if min(seen) < cutoff:
+                break
+            time.sleep(0.5)
+        rows = sorted([k, v] for k, v in seen.items() if k >= cutoff)
+        if not rows:
+            raise ValueError("빈 자료")
+        out["cd"] = rows
+        print("CD91", rows[-1])
+    except Exception as e:
+        print("CD91 건너뜀(지난 자료 사용)", e)
+        out["cd"] = prev.get("cd")
 
     try:  # 공포탐욕지수 (CNN, 비공식)
         r = get_retry("https://production.dataviz.cnn.io/index/fearandgreed/graphdata")

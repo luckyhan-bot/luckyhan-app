@@ -58,6 +58,19 @@ h2{font-size:17px;font-weight:700;margin:26px 2px 10px;letter-spacing:-.01em}
 .rank{width:20px;color:var(--sub);font-size:14px;flex:none}
 .name{flex:1;min-width:0;font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .amt{font-size:19px;font-weight:700}
+.amt .pchg{display:block;font-size:13px;font-weight:700;text-align:right;margin-top:1px}
+.fgsel{font:inherit;font-size:13px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:4px 6px;max-width:110px;flex:none}
+.fgbar{display:flex;gap:6px;overflow-x:auto;margin:4px 0 10px;padding:2px 2px 4px;scrollbar-width:none}
+.fgbar::-webkit-scrollbar{display:none}
+.fgbar button{font:inherit;font-size:14px;font-weight:500;flex:none;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:6px 13px}
+.fgbar button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.fgbar button i{font-style:normal;color:var(--sell);margin-left:6px;font-weight:700}
+.fgadd{display:flex;gap:6px;margin:0 2px 10px}
+.fgadd input{flex:1;min-width:0;font:inherit;font-size:15px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:7px 10px}
+.fghead{font-size:14px;font-weight:700;color:var(--sub);padding:12px 16px 2px;border-top:1px solid var(--line)}
+.fghead:first-child{border-top:0}
+.chartbox svg{cursor:pointer}
+.toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);font-size:14px;padding:10px 16px;border-radius:12px;max-width:90%;text-align:center}
 .up{color:var(--buy)} .down{color:var(--sell)} .zero{color:var(--sub)}
 .streak{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13px;color:var(--sub)}
 .ticks{display:flex;gap:2px}
@@ -101,7 +114,8 @@ td.px{color:var(--ink);font-weight:500}
 .gtabs button{flex:none;font:inherit;font-size:15px;font-weight:500;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:14px;padding:6px 14px;line-height:1.25}
 .gtabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .gdesc{color:var(--sub);font-size:13px;margin:10px 2px 0}
-.split{font-size:12.5px;color:var(--sub);margin:5px 0 0 30px;display:flex;flex-wrap:wrap;gap:2px 10px}
+.split{font-size:12.5px;color:var(--sub);margin:5px 0 0 30px;line-height:1.55}
+.split.inv>span{display:inline-block;margin-right:10px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 2px 14px}
 .chip{font-size:13px;font-weight:500;border-radius:8px;padding:4px 9px;background:var(--panel);border:1px solid var(--line);color:var(--sub)}
 .chip.up{background:var(--buy-soft);border-color:transparent;color:var(--buy)}
@@ -139,8 +153,7 @@ td.px{color:var(--ink);font-weight:500}
 .gscale{display:flex;justify-content:space-between;font-size:11px;color:var(--sub);padding:0 4px}
 .qbar{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0 4px}
 .qbar a{display:block;text-align:center;text-decoration:none;font-size:15px;font-weight:700;padding:11px 0;border-radius:12px;background:var(--ink);color:var(--bg)}
-.gtabs button.unseen{border-color:var(--buy);color:var(--buy)}
-.gtabs button.unseen::after{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--buy);margin-left:5px;vertical-align:4px}
+.gtabs button.unseen{border:2.5px solid #E5322D}
 .golink{display:block;margin:10px 4px 6px;text-align:center;text-decoration:none;font-size:15px;font-weight:700;
   background:var(--ink);color:var(--bg);border-radius:12px;padding:12px}
 .fgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin:8px 4px 8px}
@@ -386,9 +399,10 @@ function holdBanner(){
 function detailRow(s, code, opt = {}){
   const v = s.v, ps = gStreak(s, GROUPS[0]);
   const all = v[0] > 0 && v[1] > 0 && v[2] > 0;
-  const others = LABELS.slice(1).map((l, i) => `<span>${l} <b class="${cls(v[i+1])}">${fmt(v[i+1])}</b></span>`).join("");
-  const right = opt.edit ? `<button type="button" class="del" data-del="${esc(code)}">삭제</button>`
-                         : `<span class="amt ${cls(v[0])}">${fmt(v[0])}</span>`;
+  const others = LABELS.map((l, i) => `<span>${l} <b class="${cls(v[i])}">${fmt(v[i])}</b></span>`).join("");
+  const p = s.p;
+  const right = opt.edit ? (opt.grp || "") + `<button type="button" class="del" data-del="${esc(code)}">삭제</button>`
+                         : (p ? `<span class="amt ${cls(p[1])}">${num(p[0], 0)}<small class="pchg">${pctFmt(p[1])}</small></span>` : `<span class="amt zero">–</span>`);
   return `<div class="row" ${opt.edit ? "" : `data-code="${esc(code)}"`}>
     <div class="top"><span class="name">${arBadge(s)}${esc(s.n)}${sgBadge(s)}${all ? '<span class="allbuy">기관 3곳 매수</span>' : ""}</span>
       ${opt.star ? starBtn(code) : ""}${right}</div>
@@ -397,21 +411,56 @@ function detailRow(s, code, opt = {}){
   </div>`;
 }
 
+// 즐겨찾기 그룹 (이 기기에 저장) — 그룹 없는 종목은 '미분류'
+const FGKEY = "favgroups-v1";
+let FGROUPS = [];
+try { const v = JSON.parse(localStorage.getItem(FGKEY)); if (Array.isArray(v)) FGROUPS = v; } catch (e) {}
+function saveFGroups(){ try { localStorage.setItem(FGKEY, JSON.stringify(FGROUPS)); } catch (e) {} }
+let FGSEL = "";   // "" = 전체
+const NOGRP = "미분류";
+const favGrp = f => (f.g && FGROUPS.includes(f.g)) ? f.g : NOGRP;
+function favRow(f){
+  const sel = `<select class="fgsel" data-fg="${esc(f.c)}">${[NOGRP, ...FGROUPS].map(g =>
+    `<option value="${esc(g)}" ${favGrp(f) === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select>`;
+  const s = DATA.stocks[f.c];
+  if (s) return detailRow(s, f.c, {edit: EDIT, grp: sel});
+  return `<div class="row"><div class="top"><span class="name">${esc(f.n)}</span>
+    ${EDIT ? sel + `<button type="button" class="del" data-del="${esc(f.c)}">삭제</button>` : ""}</div>
+    <div class="streak">오늘 자료가 없어요.</div></div>`;
+}
 function renderFav(){
-  const rows = FAVS.map(f => {
-    const s = DATA.stocks[f.c];
-    if (s) return detailRow(s, f.c, {edit: EDIT});
-    return `<div class="row"><div class="top"><span class="name">${esc(f.n)}</span>
-      ${EDIT ? `<button type="button" class="del" data-del="${esc(f.c)}">삭제</button>` : ""}</div>
-      <div class="streak">오늘 자료가 없어요.</div></div>`;
+  if (FGSEL && !FGROUPS.includes(FGSEL) && FGSEL !== NOGRP) FGSEL = "";
+  const names = [...FGROUPS, NOGRP];
+  let rows;
+  if (FGSEL) rows = FAVS.filter(f => favGrp(f) === FGSEL).map(favRow).join("");
+  else rows = names.map(g => {
+    const list = FAVS.filter(f => favGrp(f) === g);
+    if (!list.length) return "";
+    return (FGROUPS.length ? `<div class="fghead">${esc(g)} · ${list.length}</div>` : "") + list.map(favRow).join("");
   }).join("");
+  const bar = `<div class="fgbar">${["", ...names].map(g =>
+    `<button type="button" data-fgsel="${esc(g)}" aria-selected="${FGSEL === g}">${g ? esc(g) : "전체"}${EDIT && g && g !== NOGRP ? `<i data-fgdel="${esc(g)}">✕</i>` : ""}</button>`).join("")}</div>`;
+  const add = EDIT ? `<form class="fgadd" id="fgadd"><input id="fgname" type="text" placeholder="새 그룹 이름 (예: 반도체)" maxlength="12" enterkeyhint="done">
+    <button type="submit" class="tool">그룹 추가</button></form>` : "";
   $("view").innerHTML = `${holdSection()}
     <div class="sec">즐겨찾기</div>
-    <div class="top-tools"><p class="gdesc">검색 결과에서 ☆를 누르면 추가돼요. 큰 숫자는 연기금 순매수예요.</p>
+    <div class="top-tools"><p class="gdesc">검색 결과에서 ☆를 누르면 추가돼요. 큰 숫자는 현재가와 등락률이에요.${EDIT ? " 편집 중에는 종목 오른쪽에서 그룹을 고를 수 있어요." : ""}</p>
       <button type="button" class="tool ${EDIT ? "on" : ""}" id="edit">${EDIT ? "완료" : "편집"}</button></div>
-    <div class="panel">${rows || '<div class="empty">즐겨찾기가 비어 있어요. 위에서 종목을 검색해 ☆를 눌러 추가하세요.</div>'}</div>
-    <p class="note">즐겨찾기는 이 기기에 저장돼요.</p>`;
+    ${FGROUPS.length || EDIT ? bar : ""}${add}
+    <div class="panel">${rows || '<div class="empty">' + (FAVS.length ? "이 그룹에 종목이 없어요. 편집을 눌러 종목 오른쪽에서 그룹을 고르세요." : "즐겨찾기가 비어 있어요. 위에서 종목을 검색해 ☆를 눌러 추가하세요.") + '</div>'}</div>
+    <p class="note">즐겨찾기와 그룹은 이 기기에 저장돼요. 현재가는 마지막 실행 때 받은 값이에요.</p>`;
   $("edit").onclick = () => { EDIT = !EDIT; renderFav(); };
+  const fa = document.getElementById("fgadd");
+  if (fa) fa.onsubmit = ev => {
+    ev.preventDefault();
+    const n = $("fgname").value.trim();
+    if (n && n !== NOGRP && !FGROUPS.includes(n)) { FGROUPS.push(n); saveFGroups(); }
+    renderFav();
+  };
+  document.querySelectorAll("[data-fg]").forEach(el => el.onchange = () => {
+    const f = FAVS.find(x => x.c === el.dataset.fg);
+    if (f) { if (el.value === NOGRP) delete f.g; else f.g = el.value; saveFavs(); renderFav(); }
+  });
 }
 
 // ---------- 투자자 탭 ----------
@@ -420,7 +469,7 @@ function renderGroup(g){
   const rows = list.map((c, i) => {
     const s = DATA.stocks[c], amt = gSum(s, g), n = gStreak(s, g);
     const split = g.inv.length > 1
-      ? `<div class="split">${g.inv.map(j => `<span>${LABELS[j]} <b class="${cls(s.v[j])}">${fmt(s.v[j])}</b></span>`).join("")}</div>` : "";
+      ? `<div class="split inv">${g.inv.map(j => `<span>${LABELS[j]} <b class="${cls(s.v[j])}">${fmt(s.v[j])}</b></span>`).join("")}</div>` : "";
     return `<div class="row" data-code="${c}"><div class="top">
       <span class="rank">${i + 1}</span><span class="name">${arBadge(s)}${esc(s.n)}${sgBadge(s)}</span>
       <span class="amt ${cls(amt)}">${fmt(amt)}</span><span class="badge ${cls(n)}">${Math.abs(n)}일</span>
@@ -536,6 +585,15 @@ function hyCard(hy){
     ${prev != null ? `<div class="mchg ${cls(last - prev)}">전일 대비 ${last - prev > 0 ? "▲" : last - prev < 0 ? "▼" : ""} ${(Math.abs(last - prev) * 100).toFixed(0)}bp</div>` : ""}
     ${lineSVG(p)}
     <div class="mnote">신용이 낮은 회사채와 국채의 금리 차이예요. 오르면 시장이 위험을 피한다는 신호로 봐요. 미국 연준(FRED) 자료라 하루 늦게 나와요. ${shortDate(hy[hy.length - 1][0])} 기준.</div></div>`;
+}
+function cdCard(cd){
+  if (!cd || !cd.length) return `<div class="mcard"><div class="mhead"><span class="mn">CD 91일물 금리</span></div><div class="empty-sm">오늘은 자료를 못 받았어요.</div></div>`;
+  const last = cd[cd.length - 1][1], prev = cd.length > 1 ? cd[cd.length - 2][1] : null;
+  return `<div class="mcard"><div class="mhead"><span class="mn">CD 91일물 금리</span>
+    <span class="mv">${last.toFixed(2)}%</span></div>
+    ${prev != null ? `<div class="mchg ${cls(last - prev)}">전일 대비 ${last - prev > 0 ? "▲" : last - prev < 0 ? "▼" : ""} ${(Math.abs(last - prev) * 100).toFixed(0)}bp</div>` : ""}
+    ${lineSVG(cd.slice(-RANGE))}
+    <div class="mnote">은행끼리 3개월 동안 돈을 빌리는 금리예요. 국내 단기 금리의 기준이라, 오르면 시중 돈줄이 마르는 신호로 봐요. ${shortDate(cd[cd.length - 1][0])} 기준.</div></div>`;
 }
 function nightCard(){
   return `<div class="mcard"><div class="mhead"><span class="mn">코스피200 야간선물</span><span class="munit">18:00~다음 날 06:00</span></div>
@@ -779,11 +837,11 @@ function renderMacro(){
       ${ranges.map(([n, t]) => `<button type="button" class="tool ${RANGE === n ? "on" : ""}" data-range="${n}">${t}</button>`).join("")}</div>
     <div class="sec">지수</div>${sec("지수")}
     ${sectorSection("d")}
-    <div class="sec">금리 · 원자재 · 코인</div>${sec("매크로")}
+    <div class="sec">금리 · 원자재 · 코인</div>${sec("매크로")}${cdCard(MACRO.cd)}
     <div class="sec">시장 심리</div>${fgCard(MACRO.fg)}${hyCard(MACRO.hy)}
     <p class="note">${MACRO.updated} 갱신. 미국 지표는 전날 밤 마감 기준이에요.</p>
     <div class="mcard" style="margin-top:14px"><div class="mhead"><span class="mn">자료가 안 바뀌었나요?</span></div>
-      <div class="mnote">자료는 직접 실행할 때만 바뀌어요. 열린 화면에서 <b>Run workflow</b>(앱에선 "워크플로 실행")를 누르면 3~5분 뒤 반영돼요.<br>
+      <div class="mnote">아침 8:40·9:30(평일)은 자동으로 돌아요. 깃허브 사정으로 10~30분 늦거나 가끔 빠질 수 있어요. 그 밖의 시간은 직접 실행할 때만 바뀌어요. 열린 화면에서 <b>Run workflow</b>(앱에선 "워크플로 실행")를 누르면 3~5분 뒤 반영돼요.<br>
       <b>누르기 전에:</b> 실행 목록 맨 위에 <b>노란 동그라미(진행 중)</b>가 있으면 끝날 때까지 기다리세요.<br>
       오전 8시~9시: 개장 전 체크(미국 시간외) · 오전 9시~11시: 아침 체크(시초가·코스피/코스닥 수급·아침 업종) · 그 외: 전체 자료. 매매 신호와 성적표는 오후 4시 이후 실행분이 확정이에요. 짧은 시간에 여러 번 누르진 마세요.</div>
       <a class="golink" href="https://github.com/luckyhan-bot/luckyhan-app/actions/workflows/daily.yml" target="_blank" rel="noopener">직접 실행하러 가기 ↗</a></div>`;
@@ -1300,11 +1358,41 @@ document.addEventListener("click", e => {
   if (uh) { delete HOLD[uh.dataset.unhold]; saveHold(); render(); return; }
   const st = e.target.closest("[data-star]");
   if (st){ e.stopPropagation(); toggleFav(st.dataset.star); renderResult(lastQ || "", HITS); if (TAB === "fav") renderFav(); return; }
+  const fgd = e.target.closest("[data-fgdel]");
+  if (fgd){
+    e.stopPropagation();
+    const g = fgd.dataset.fgdel;
+    FGROUPS = FGROUPS.filter(x => x !== g); saveFGroups();
+    FAVS.forEach(f => { if (f.g === g) delete f.g; }); saveFavs();
+    if (FGSEL === g) FGSEL = "";
+    renderFav(); return;
+  }
+  const fgs = e.target.closest("[data-fgsel]");
+  if (fgs){ FGSEL = fgs.dataset.fgsel; renderFav(); return; }
+  if (e.target.closest("#chart svg") && OPEN){ openHero(OPEN); return; }
   const del = e.target.closest("[data-del]");
   if (del){ FAVS = FAVS.filter(f => f.c !== del.dataset.del); saveFavs(); renderFav(); return; }
   const row = e.target.closest(".row[data-code]");
   if (row && DATA) openDetail(row.dataset.code);
 });
+
+// ---------- 차트 누르면: 종목코드 복사 + 영웅문S# 열기 ----------
+// 키움이 종목 화면으로 바로 가는 주소를 공개하지 않아서, 코드를 복사해 두고 앱만 열어요.
+const HERO_PKG = "com.kiwoom.heromts";
+function toast(t){
+  const d = document.createElement("div"); d.className = "toast"; d.textContent = t;
+  document.body.appendChild(d); setTimeout(() => d.remove(), 2600);
+}
+async function openHero(code){
+  const name = (DATA.stocks[code] || {}).n || "";
+  let ok = false;
+  try { await navigator.clipboard.writeText(code); ok = true; } catch (e) {
+    try { const t = document.createElement("textarea"); t.value = code; document.body.appendChild(t); t.select(); ok = document.execCommand("copy"); t.remove(); } catch (e2) {}
+  }
+  toast(ok ? `${name} 종목코드 ${code} 복사됨 · 영웅문 검색창에 붙여넣기` : `종목코드 ${code} (복사 안 됨)`);
+  const fb = encodeURIComponent(`https://play.google.com/store/apps/details?id=${HERO_PKG}`);
+  setTimeout(() => { location.href = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${HERO_PKG};S.browser_fallback_url=${fb};end`; }, 400);
+}
 
 // ---------- 시작 ----------
 (async () => {
