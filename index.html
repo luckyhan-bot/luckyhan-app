@@ -1383,15 +1383,15 @@ function toast(t){
   const d = document.createElement("div"); d.className = "toast"; d.textContent = t;
   document.body.appendChild(d); setTimeout(() => d.remove(), 2600);
 }
-async function openHero(code){
+function openHero(code){
+  // 크롬은 '누른 순간'에 바로 앱을 열어야 허락해요. 기다렸다 열면 플레이스토어로 넘어가서, 복사와 앱 열기를 동시에 해요.
   const name = (DATA.stocks[code] || {}).n || "";
   let ok = false;
-  try { await navigator.clipboard.writeText(code); ok = true; } catch (e) {
-    try { const t = document.createElement("textarea"); t.value = code; document.body.appendChild(t); t.select(); ok = document.execCommand("copy"); t.remove(); } catch (e2) {}
-  }
+  try { const t = document.createElement("textarea"); t.value = code; t.style.position = "fixed"; t.style.opacity = "0";
+        document.body.appendChild(t); t.select(); ok = document.execCommand("copy"); t.remove(); } catch (e) {}
+  try { if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {}); ok = true; } catch (e) {}
   toast(ok ? `${name} 종목코드 ${code} 복사됨 · 영웅문 검색창에 붙여넣기` : `종목코드 ${code} (복사 안 됨)`);
-  const fb = encodeURIComponent(`https://play.google.com/store/apps/details?id=${HERO_PKG}`);
-  setTimeout(() => { location.href = `intent://#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${HERO_PKG};S.browser_fallback_url=${fb};end`; }, 400);
+  location.href = `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${HERO_PKG};end`;
 }
 
 // ---------- 시작 ----------
