@@ -1,9 +1,6 @@
 name: daily
 on:
-  workflow_dispatch:          # 직접 실행
-  schedule:                   # 아침 자동 실행 (깃허브 시간 = 한국 -9시간)
-    - cron: "40 23 * * 0-4"   # 평일 08:40
-    - cron: "30 0 * * 1-5"    # 평일 09:30
+  workflow_dispatch:          # 직접 실행만 (아침 예약은 Claude Code 예약 작업이 이 버튼을 눌러줌)
 permissions:
   contents: write
 concurrency:            # 예약 실행과 직접 실행이 겹치면 앞의 것이 끝날 때까지 기다렸다가 실행
