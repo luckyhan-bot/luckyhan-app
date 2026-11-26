@@ -342,25 +342,44 @@ def fetch_macro():
         print("하이일드 건너뜀(지난 자료 사용)", e)
         out["hy"] = prev.get("hy")
 
-    try:  # CD91 금리 (네이버 금융 일별 시세, 단위 %)
-        import re
-        seen = {}
-        for page in range(1, 14):
-            r = get_retry(f"https://finance.naver.com/marketindex/interestDailyQuote.naver?marketindexCd=IRR_CD91&page={page}")
-            html = r.content.decode("euc-kr", "ignore")
-            got = re.findall(r'(\d{4})\.(\d{2})\.(\d{2})\s*</td>\s*<td[^>]*>\s*([\d.]+)', html)
+    try:  # CD91 금리 (단위 %) — 네이버 옛 주소는 없어져서(410) 한국은행 ECOS 공개 키(최근 10일)로 받아 쌓음
+        seen = {r[0]: r[1] for r in (prev.get("cd") or [])}
+        got = 0
+        try:
+            end_d = kst_now().strftime("%Y%m%d")
+            beg_d = (kst_now() - dt.timedelta(days=20)).strftime("%Y%m%d")
+            r = get_retry(f"https://ecos.bok.or.kr/api/StatisticSearch/sample/json/kr/1/10/817Y002/D/{beg_d}/{end_d}/010502000")
+            j = r.json()
+            for row in (j.get("StatisticSearch") or {}).get("row", []):
+                t, v = str(row.get("TIME", "")), row.get("DATA_VALUE")
+                if len(t) == 8 and v not in (None, ""):
+                    seen[f"{t[:4]}-{t[4:6]}-{t[6:]}"] = round(float(v), 2)
+                    got += 1
             if not got:
-                break
-            for y, m, d, v in got:
-                seen[f"{y}-{m}-{d}"] = round(float(v), 2)
-            if min(seen) < cutoff:
-                break
-            time.sleep(0.5)
+                print("CD91 ECOS 응답:", str(j)[:200])
+        except Exception as e:
+            print("CD91 ECOS 실패", e)
+        if not got:   # 예비: 네이버 모바일
+            try:
+                r = get_retry("https://m.stock.naver.com/front-api/marketIndex/prices?category=bond&reutersCode=IRR_CD91&page=1&pageSize=60")
+                j = r.json()
+                lst = j.get("result") if isinstance(j, dict) else None
+                lst = lst if isinstance(lst, list) else (lst or {}).get("prices", []) if isinstance(lst, dict) else []
+                for x in lst:
+                    t = str(x.get("localTradedAt", ""))[:10]
+                    v = str(x.get("closePrice", "")).replace(",", "")
+                    if len(t) == 10 and v:
+                        seen[t] = round(float(v), 2)
+                        got += 1
+                if not got:
+                    print("CD91 네이버 응답:", str(j)[:200])
+            except Exception as e:
+                print("CD91 네이버 실패", e)
         rows = sorted([k, v] for k, v in seen.items() if k >= cutoff)
         if not rows:
             raise ValueError("빈 자료")
         out["cd"] = rows
-        print("CD91", rows[-1])
+        print("CD91", got, "건 새로 받음, 최근", rows[-1])
     except Exception as e:
         print("CD91 건너뜀(지난 자료 사용)", e)
         out["cd"] = prev.get("cd")
@@ -683,6 +702,12 @@ def run_flows():
         cl = [bars[d][code][3] for d in ma_days if code in bars.get(d, {})]
         if len(cl) >= 20:
             s["m"] = [round(sum(cl[-5:]) / 5), round(sum(cl[-20:]) / 20)]   # 5일선, 20일선 (보유 종목 점검용)
+        # 손절 기준③: 최근 20거래일 안에서 가장 가까운 장대양봉(몸통 4% 이상)의 몸통 절반
+        for d in reversed(ma_days[-20:]):
+            b = bars.get(d, {}).get(code)
+            if b and b[0] and b[3] > b[0] and (b[3] - b[0]) / b[0] >= 0.04:
+                s["bh"] = [f"{int(d[4:6])}/{int(d[6:8])}", int(b[0] + (b[3] - b[0]) / 2)]
+                break
         tb = bars.get(today, {}).get(code)
         pb = bars.get(ma_days[-2], {}).get(code) if len(ma_days) > 1 else None
         if tb:
@@ -937,7 +962,8 @@ def run_morning():
             st = 0                               # 시초가 근처
         items[code] = [round(gap, 2), round(fo, 2), round(vr, 2), st, int(o), int(c),
                        round((c / pc - 1) * 100, 2),        # 전일 대비 등락률
-                       round(c * v / 1e8)]                  # 지금까지 거래대금(억)
+                       round(c * v / 1e8),                  # 지금까지 거래대금(억)
+                       int(pc)]                             # 어제 종가
     out["items"] = items
 
     # 코스피·코스닥: 오늘 장중 지수(잠정 캔들) + 시장 전체 투자자별 수급(잠정)

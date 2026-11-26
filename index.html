@@ -56,7 +56,8 @@ h2{font-size:17px;font-weight:700;margin:26px 2px 10px;letter-spacing:-.01em}
 .row:first-child{border-top:0}
 .top{display:flex;align-items:baseline;gap:10px}
 .rank{width:20px;color:var(--sub);font-size:14px;flex:none}
-.name{flex:1;min-width:0;font-size:16px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.name{flex:1;min-width:0;font-size:16px;font-weight:500;line-height:1.6;overflow-wrap:anywhere}
+.name .sg{margin-top:2px}
 .amt{font-size:19px;font-weight:700}
 .amt .pchg{display:block;font-size:13px;font-weight:700;text-align:right;margin-top:1px}
 .fgsel{font:inherit;font-size:13px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:4px 6px;max-width:110px;flex:none}
@@ -116,6 +117,11 @@ td.px{color:var(--ink);font-weight:500}
 .gdesc{color:var(--sub);font-size:13px;margin:10px 2px 0}
 .split{font-size:12.5px;color:var(--sub);margin:5px 0 0 30px;line-height:1.55}
 .split.inv>span{display:inline-block;margin-right:10px}
+.split.hl>span{display:block}
+.split.hl .lr{color:var(--sell);font-weight:700}
+.split.hl .lw{color:var(--sub)}
+.split.hl small{font-weight:400;color:var(--sub)}
+.tool.sm{font-size:13px;padding:4px 10px}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 2px 14px}
 .chip{font-size:13px;font-weight:500;border-radius:8px;padding:4px 9px;background:var(--panel);border:1px solid var(--line);color:var(--sub)}
 .chip.up{background:var(--buy-soft);border-color:transparent;color:var(--buy)}
@@ -199,6 +205,8 @@ td.px{color:var(--ink);font-weight:500}
 .ar.full.down{background:var(--sell);color:#fff;border-color:var(--sell)}
 .sg{display:inline-block;white-space:nowrap;flex:none;font-size:11px;font-weight:700;line-height:1;border-radius:999px;padding:3px 7px;margin-left:6px;vertical-align:2px;color:#fff}
 .sg.b{background:var(--buy)} .sg.s{background:var(--sell)} .sg.w{background:#C98A00} .sg.l{background:#6A7180}
+.sg.old{background:none;color:var(--sub);border:1.3px solid var(--line);padding:2px 6px}
+.sg.now{background:var(--buy);box-shadow:0 0 0 2px var(--buy-soft)}
 .sgline{display:flex;gap:8px;align-items:flex-start;margin:0 2px 12px;padding:10px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:14px;line-height:1.45}
 .secgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:8px 0}
 .seccard{font:inherit;text-align:left;border:1px solid var(--line);border-left:5px solid var(--sc);background:var(--panel);color:var(--ink);border-radius:10px;padding:8px 8px 7px;min-width:0}
@@ -286,9 +294,17 @@ function normG(g){
   if (g.length < 5) return [g[0], g[1], g[2], 0, g[3] || 0];
   return g;
 }
+// 매매 신호 날짜: 오늘 장 마감(오후 4시 이후 실행) 자료일 때만 색깔, 그 전에는 전일 신호라 회색
+const kstToday = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+const sigFresh = () => !!(DATA && DATA.date === kstToday() && DATA.final !== false);
+const sigDay = () => DATA && DATA.date ? `${+DATA.date.slice(5, 7)}/${+DATA.date.slice(8, 10)}` : "";
 function sgBadge(s){
   const g = s && normG(s.g);
   if (!g) return "";
+  if (!sigFresh()) {
+    const t = g[0] === "W" ? "주의" : g[0] === "L" ? `바닥관찰${g[4] ? "★" : ""}` : `${g[0] === "B" ? "매수" : "매도"}${CIRC[g[1]] || ""}${g[4] ? "★" : ""}`;
+    return `<span class="sg old" title="${sigDay()} 종가 기준(전일) · ${g[2]}">${sigDay()} ${t}</span>`;
+  }
   if (g[0] === "W") return `<span class="sg w" title="${g[2]}">주의</span>`;
   if (g[0] === "L") return `<span class="sg l" title="${g[2]}">바닥관찰${g[4] ? "★" : ""}</span>`;
   const buy = g[0] === "B";
@@ -315,7 +331,8 @@ function sgLine(s){
   let syn = "";
   if (s.sec && g[0] === "B") syn = s.sy ? `<br>🔥 ${esc(s.sec)} 업종이 같이 오르는 날이에요 (업종 동조화).`
                                        : `<br>업종(${esc(s.sec)})은 같이 움직이지 않아요. 혼자 오른 거면 단발성일 수 있어요.`;
-  return `<div class="sgline">${sgBadge(s)}<div>${SG_TXT[g[0] + g[1]] || ""}<br>이유: ${esc(g[2])}${stop}${far}${arl}${g[4] ? "<br>★ 외국인·기관이 사고 개인이 판, 손바뀜이 같이 나왔어요." : ""}${syn}${mix}</div></div>`;
+  const oldNote = sigFresh() ? "" : `<b style="color:var(--sub)">${sigDay()} 종가 기준(전일) 신호예요. 오늘 신호는 오후 4시 이후 실행에서 나와요.</b><br>`;
+  return `<div class="sgline">${sgBadge(s)}<div>${oldNote}${SG_TXT[g[0] + g[1]] || ""}<br>이유: ${esc(g[2])}${stop}${far}${arl}${g[4] ? "<br>★ 외국인·기관이 사고 개인이 판, 손바뀜이 같이 나왔어요." : ""}${syn}${mix}</div></div>`;
 }
 function arBadge(s){
   const a = s && s.a;
@@ -351,23 +368,52 @@ try { HOLD = JSON.parse(localStorage.getItem(HKEY)) || {}; } catch (e) { HOLD = 
 function saveHold(){ try { localStorage.setItem(HKEY, JSON.stringify(HOLD)); } catch (e) {} }
 const STOP_PCT = -5;   // 매수가 대비 손절 기준(%)
 function holdStatus(code){
+  // 손절 기준은 박병창 원칙으로만: ② −5% ③ 장대양봉 몸통 절반 (빨강), ① 5일선은 위험 알림(회색), 매도② 20일선
   const h = HOLD[code], s = DATA && DATA.stocks[code];
   if (!h || !s || !s.p) return null;
   const close = s.p[0], ret = (close / h.p - 1) * 100, m = s.m || [];
-  const red = [], info = [];          // red: 원칙상 매도 기준 / info: 참고 정보
-  if (ret <= STOP_PCT) red.push(`매수가 대비 ${pctFmt(ret)} → −5% 손절선 이탈, 매도 검토`);
-  else if (ret <= -3) info.push(`매수가 대비 ${pctFmt(ret)} → −3% 주의`);
+  const red = [], info = [], lines = [];
+  const half = h.half || "";          // 절반 매도한 날 (있으면 손절 알림은 끄고 매도②만 알림)
+  const stopPrice = Math.round(h.p * (1 + STOP_PCT / 100));
   const g = normG(s.g);
-  if (g && g[0] === "S") red.push(`오늘 매도${CIRC[g[1]] || ""} 신호: ${g[2]}`);
+  if (m[0]) {
+    const b = close < m[0];
+    lines.push({k: "① 5일선", p: m[0], b, note: "위험 알림"});
+    if (b) info.push(`종가가 5일선(${num(m[0], 0)}원) 아래 — 위험 알림`);
+  }
+  {
+    const b = close <= stopPrice;
+    lines.push({k: "② −5% 손절", p: stopPrice, b});
+    if (b && !half) red.push(`매수가 대비 ${pctFmt(ret)} → −5% 손절선(${num(stopPrice, 0)}원) 이탈`);
+  }
+  if (s.bh) {
+    const b = close < s.bh[1];
+    lines.push({k: "③ 장대양봉 절반", p: s.bh[1], b, note: `${s.bh[0]} 양봉`});
+    if (b && !half) red.push(`${s.bh[0]} 장대양봉 몸통 절반(${num(s.bh[1], 0)}원) 이탈`);
+  }
+  if (m[1]) {
+    const b = close < m[1];
+    lines.push({k: "매도② 20일선", p: m[1], b, sell2: true});
+    if (b) red.push(`20일선(${num(m[1], 0)}원) 이탈 → 매도② 검토${half ? " (남은 물량)" : ""}`);
+  }
+  if (g && g[0] === "S" && (!half || g[1] === 2)) red.push(`오늘 매도${CIRC[g[1]] || ""} 신호: ${g[2]}`);
   if (g && g[0] === "W") info.push(`오늘 주의 신호: ${g[2]}`);
-  if (m[0] && close < m[0]) info.push(`종가가 5일선(${num(m[0], 0)}원) 아래`);
-  if (m[1] && close < m[1]) info.push(`종가가 20일선(${num(m[1], 0)}원) 아래`);
-  return {close, ret, red, info, danger: red.length > 0, stopPrice: Math.round(h.p * (1 + STOP_PCT / 100))};
+  if (half) info.unshift(`${half} 절반 매도함 — 이제 매도②(20일선 이탈)만 알려요`);
+  return {close, ret, red, info, lines, half, danger: red.length > 0, stopPrice};
+}
+function holdLines(st){
+  return `<div class="split hl">${st.lines.map(x => `<span class="${x.b ? ((x.note === "위험 알림" || (st.half && !x.sell2)) ? "lw" : "lr") : "lo"}">${x.k} <b>${num(x.p, 0)}원</b> ${x.b ? "❌ 이탈" : "⭕ 지킴"}${x.note && x.note !== "위험 알림" ? ` <small>(${esc(x.note)})</small>` : ""}</span>`).join("")}</div>`;
 }
 function holdAlerts(st){
   if (!st.red.length && !st.info.length) return `<div class="split">✅ 기준 이상 없음</div>`;
   return (st.red.length ? `<div class="split" style="color:var(--sell);font-weight:700">⚠️ ${st.red.map(esc).join("<br>⚠️ ")}</div>` : "")
        + (st.info.length ? `<div class="split">ℹ️ ${st.info.map(esc).join("<br>ℹ️ ")}</div>` : "");
+}
+function halfBtn(c){
+  const h = HOLD[c];
+  return h && h.half
+    ? `<button type="button" class="tool sm" data-unhalf="${c}">절반 매도 취소</button>`
+    : `<button type="button" class="tool sm" data-half="${c}">절반 매도함</button>`;
 }
 function holdSection(){
   const codes = Object.keys(HOLD).filter(c => DATA.stocks[c]);
@@ -376,12 +422,14 @@ function holdSection(){
     const s = DATA.stocks[c], st = holdStatus(c), h = HOLD[c];
     return `<div class="row" ${EDIT ? "" : `data-code="${c}"`}><div class="top"><span class="name">${arBadge(s)}${esc(s.n)}${sgBadge(s)}</span>
       ${EDIT ? `<button type="button" class="del" data-unhold="${c}">보유 해제</button>` : `<span class="amt ${cls(st.ret)}">${pctFmt(st.ret)}</span>`}</div>
-      <div class="split">매수가 ${num(h.p, 0)}원 · 종가 ${num(st.close, 0)}원 · −5% 선 ${num(st.stopPrice, 0)}원</div>
+      <div class="split">매수가 ${num(h.p, 0)}원 · 종가 ${num(st.close, 0)}원${st.half ? ` · <b>${st.half} 절반 매도</b>` : ""}</div>
+      ${holdLines(st)}
       ${holdAlerts(st)}
+      ${EDIT ? "" : `<div style="margin:6px 0 0 30px">${halfBtn(c)}</div>`}
     </div>`;
   }).join("");
   return `<div class="sec">보유 종목</div><div class="panel">${rows}</div>
-    <p class="note">종가 기준으로 점검해요(오후 4시 이후 실행 자료가 확정). ⚠️ 빨간 글씨는 원칙상 매도 기준(−5% 손절선, 매도 신호), ℹ️ 회색은 참고 정보예요. 보유 정보는 이 폰에만 저장돼요.</p>`;
+    <p class="note">종가 기준으로 점검해요(오후 4시 이후 실행 자료가 확정). 박병창 손절 기준: ① 5일선(위험 알림만) ② 매수가 −5% ③ 최근 장대양봉 몸통 절반, 그리고 매도② 20일선이에요. ⚠️ 빨간 글씨는 원칙상 매도 기준, ℹ️ 회색은 참고예요. 절반 매도 후 <b>절반 매도함</b>을 누르면 손절 알림은 꺼지고 20일선 이탈(매도②)만 알려요. 보유 정보는 이 폰에만 저장돼요.</p>`;
 }
 function holdBanner(){
   if (!DATA) return "";
@@ -389,7 +437,9 @@ function holdBanner(){
   if (!bad.length) return "";
   const lab = c => {
     const g = normG(DATA.stocks[c].g);
-    if (g && g[0] === "S") return `매도${CIRC[g[1]] || ""}`;
+    const st = holdStatus(c), m = DATA.stocks[c].m || [];
+    if (g && g[0] === "S" && (!st.half || g[1] === 2)) return `매도${CIRC[g[1]] || ""}${sigFresh() ? "" : ` (${sigDay()} 종가 기준)`}`;
+    if (m[1] && st.close < m[1]) return "20일선 이탈(매도②)";
     return "손절선 이탈";
   };
   return `<button type="button" class="holdbar" id="holdbar">${bad.map(c => `⚠️ ${lab(c)}: ${esc(DATA.stocks[c].n)}`).join("<br>")} ›</button>`;
@@ -448,7 +498,7 @@ function renderFav(){
       <button type="button" class="tool ${EDIT ? "on" : ""}" id="edit">${EDIT ? "완료" : "편집"}</button></div>
     ${FGROUPS.length || EDIT ? bar : ""}${add}
     <div class="panel">${rows || '<div class="empty">' + (FAVS.length ? "이 그룹에 종목이 없어요. 편집을 눌러 종목 오른쪽에서 그룹을 고르세요." : "즐겨찾기가 비어 있어요. 위에서 종목을 검색해 ☆를 눌러 추가하세요.") + '</div>'}</div>
-    <p class="note">즐겨찾기와 그룹은 이 기기에 저장돼요. 현재가는 마지막 실행 때 받은 값이에요. <button type="button" class="tool" id="rsync">리포트 앱 연동</button></p>`;
+    <p class="note">즐겨찾기와 그룹은 이 기기에 저장돼요. 현재가는 마지막 실행 때 받은 값이에요.</p>`;
   $("edit").onclick = () => { EDIT = !EDIT; renderFav(); };
   const fa = document.getElementById("fgadd");
   if (fa) fa.onsubmit = ev => {
@@ -936,7 +986,7 @@ function renderPick(){
 }
 const MST = {
   "1":  ["시초가 지지 ✅", "up", "시초가를 지키는 중 → 상승 의지"],
-  "3":  ["시초가 재돌파 ✅", "up", "장 초반 시초가 아래로 눌렸다가 다시 뚫고 올라감 → 1원칙 매수 타이밍"],
+  "3":  ["시초가 재돌파", "up", "장 초반 시초가 아래로 눌렸다가 다시 뚫고 올라감 → 반등 (전일 매수 후보가 아니라 매수 신호는 아님)"],
   "0":  ["시초가 근처", "zero", "방향 탐색 중 → 관망"],
   "-1": ["시초가 아래 ⚠️", "down", "시초가를 깨고 내려감"],
   "-2": ["갭 상승 후 시초가 이탈 ⚠️", "down", "갭으로 띄운 뒤 밀림 → 차익 매물, 비중 축소 검토"]
@@ -944,11 +994,23 @@ const MST = {
 function morningRow(c, i){
   const s = DATA.stocks[c], m = MORNING.items[c];
   if (!s || !m) return "";
-  const [gap, fo, vr, st] = m, t = MST[String(st)];
+  const [gap, fo, vr, st] = m;
+  let t = MST[String(st)];
+  const pg = normG(s.g), todayM = MORNING.date === kstToday();
+  const cand = pg && pg[0] === "B" && !sigFresh();      // 전일 종가 기준 매수 후보
+  let nowBadge = "";
+  if (cand && st === 3) {
+    t = [todayM ? "오늘 매수 타이밍 ✅" : "매수 타이밍 ✅", "up", `전일 매수${CIRC[pg[1]] || ""} 후보 + ${todayM ? "오늘" : ""} 시초가 재돌파 → 1원칙 매수 타이밍`];
+    nowBadge = `<span class="sg now">${todayM ? "오늘 " : ""}매수 타이밍</span>`;
+  } else if (cand && st === 1) {
+    t = [t[0], t[1], "시초가를 지키는 중 → 상승 의지 (전일 매수 후보 유지, 재돌파·지지 확인 후 진입)"];
+  }
+  const pc = m[8] || (m[5] && m[6] != null ? Math.round(m[5] / (1 + m[6] / 100)) : 0);
+  const pxl = m[4] ? `어제 종가 ${num(pc, 0)}원 · 시가 ${num(m[4], 0)}원 · 현재가 <b class="${cls(m[6])}">${num(m[5], 0)}원 (${pctFmt(m[6])})</b><br>` : "";
   return `<div class="row" data-code="${c}"><div class="top">
-    <span class="rank">${i + 1}</span><span class="name">${arBadge(s)}${esc(s.n)}${sgBadge(s)}</span>
+    <span class="rank">${i + 1}</span><span class="name">${arBadge(s)}${esc(s.n)}${sgBadge(s)}${nowBadge}</span>
     <span class="amt ${t[1]}" style="font-size:14px">${t[0]}</span></div>
-    <div class="split" style="margin-left:30px">갭 ${pctFmt(gap)} · 시가 대비 ${pctFmt(fo)}<br><b class="${vr >= 0.5 ? "up" : ""}">거래량 평소의 ${Math.round(vr * 100)}%</b>${vr >= 1 ? " (폭발적)" : vr >= 0.5 ? " (평소보다 많음)" : vr >= 0.3 ? " (활발)" : " (조용)"}<br>${t[2]}</div></div>`;
+    <div class="split" style="margin-left:30px">${pxl}갭 ${pctFmt(gap)} · 시가 대비 ${pctFmt(fo)}<br><b class="${vr >= 0.5 ? "up" : ""}">거래량 평소의 ${Math.round(vr * 100)}%</b>${vr >= 1 ? " (폭발적)" : vr >= 0.5 ? " (평소보다 많음)" : vr >= 0.3 ? " (활발)" : " (조용)"}<br>${t[2]}</div></div>`;
 }
 function preCard(){
   const pre = MORNING && MORNING.pre;
@@ -993,7 +1055,10 @@ function renderMorningTab(){
   const holdRows = holds.map((c, i) => {
     const h = HOLD[c], m = MORNING.items[c], cur = m[5];
     const ret = (cur / h.p - 1) * 100, stop5 = Math.round(h.p * 0.95);
-    const warn = cur <= stop5 ? `<br><b style="color:var(--sell)">⚠️ 지금 가격이 −5% 선(${num(stop5, 0)}원) 아래예요</b>` : "";
+    const ma20 = (DATA.stocks[c].m || [])[1];
+    const warn = (!h.half && cur <= stop5) ? `<br><b style="color:var(--sell)">⚠️ 지금 가격이 −5% 선(${num(stop5, 0)}원) 아래예요</b>`
+      : (ma20 && cur < ma20) ? `<br><b style="color:var(--sell)">⚠️ 지금 가격이 20일선(${num(ma20, 0)}원) 아래예요 (매도② 검토)</b>`
+      : (h.half ? `<br>ℹ️ ${h.half} 절반 매도함` : "");
     return morningRow(c, i).replace(/<\/div><\/div>$/, `<br>내 매수가 ${num(h.p, 0)}원 → 지금 ${num(cur, 0)}원 (<span style="font-weight:700;color:${ret >= 0 ? "var(--buy)" : "var(--sell)"}">${pctFmt(ret)}</span>)${warn}</div></div>`);
   }).join("");
   const hasItems = Object.keys(MORNING.items || {}).length > 0;
@@ -1265,7 +1330,7 @@ function renderChart(rows){
   const g = GROUPS.find(x => x.k === CH) || GROUPS[0];
   const st = OPEN && DATA.stocks[OPEN], hs = (st && st.h) || [];
   const hlist = hs.length
-    ? `<div class="mnote" style="padding:2px 4px 6px">▲ 매수·바닥관찰 ▼ 매도·주의 · 최근 신호: ${hs.slice().reverse().map(h => `<b class="${h[1] === "B" || h[1] === "L" ? "up" : "down"}">${h[0]} ${sigName(h[1], h[2])}</b>`).join(", ")}</div>`
+    ? `<div class="mnote" style="padding:2px 4px 6px">▲ 매수·바닥관찰 ▼ 매도·주의 · 최근 신호: ${hs.slice().reverse().map(h => `<b class="${(sigFresh() && h[0] === DATA.date.slice(5, 7) + "/" + DATA.date.slice(8, 10)) ? (h[1] === "B" || h[1] === "L" ? "up" : "down") : "zero"}">${h[0]} ${sigName(h[1], h[2])}</b>`).join(", ")}</div>`
     : `<div class="mnote" style="padding:2px 4px 6px">최근 20거래일 동안 뜬 신호가 없어요.</div>`;
   $("chart").innerHTML = chartSVG(rows, g) + hlist + `<div class="ctabs">${GROUPS.map(x =>
     `<button type="button" data-ch="${x.k}" aria-selected="${x.k === g.k}">${x.tab}</button>`).join("")}</div>`;
@@ -1291,7 +1356,10 @@ async function openDetail(code){
   const holdUI = `<div class="holdform"><input id="holdp" type="text" inputmode="numeric" placeholder="매수가 (원)" value="${h ? Number(h.p).toLocaleString("ko-KR") : ""}">
     <button type="button" class="tool" id="holdsave">${h ? "매수가 수정" : "보유 등록"}</button>${h ? '<button type="button" class="tool" id="holddel">해제</button>' : ""}</div>`;
   const hst = h ? holdStatus(code) : null;
-  const holdInfo = hst ? `<div class="sgline"><div>내 보유: 매수가 ${num(h.p, 0)}원 → 종가 ${num(hst.close, 0)}원 (<b class="${cls(hst.ret)}">${pctFmt(hst.ret)}</b>) · −5% 선 ${num(hst.stopPrice, 0)}원${hst.red.length ? `<br><b style="color:var(--sell)">⚠️ ${hst.red.map(esc).join("<br>⚠️ ")}</b>` : ""}${hst.info.length ? "<br>ℹ️ " + hst.info.map(esc).join("<br>ℹ️ ") : ""}</div></div>` : "";
+  const holdInfo = hst ? `<div class="sgline"><div>내 보유: 매수가 ${num(h.p, 0)}원 → 종가 ${num(hst.close, 0)}원 (<b class="${cls(hst.ret)}">${pctFmt(hst.ret)}</b>)${hst.half ? ` · <b>${hst.half} 절반 매도</b>` : ""}
+    ${holdLines(hst).replace('class="split hl"', 'class="split hl" style="margin-left:0"')}
+    ${hst.red.length ? `<b style="color:var(--sell)">⚠️ ${hst.red.map(esc).join("<br>⚠️ ")}</b><br>` : ""}${hst.info.length ? "ℹ️ " + hst.info.map(esc).join("<br>ℹ️ ") : ""}
+    <div style="margin-top:6px">${halfBtn(code)}</div></div></div>` : "";
   const chips = holdInfo + holdUI + sgLine(s) + `<div class="chips">${GROUPS.map(g => {
     const n = gStreak(s, g);
     return `<span class="chip ${cls(n)}">${g.tab} ${n ? streakText(n) : "연속 없음"}</span>`;
@@ -1354,6 +1422,10 @@ document.addEventListener("click", e => {
     return;
   }
   if (e.target.closest("#holdbar")) { TAB = "fav"; EDIT = false; render(); window.scrollTo(0, 0); return; }
+  const hf = e.target.closest("[data-half]");
+  if (hf){ e.stopPropagation(); const h = HOLD[hf.dataset.half]; if (h){ const d = new Date(Date.now() + 9 * 3600e3); h.half = `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; saveHold(); } if (OPEN) openDetail(OPEN); else render(); refreshHoldBar(); return; }
+  const uhf = e.target.closest("[data-unhalf]");
+  if (uhf){ e.stopPropagation(); const h = HOLD[uhf.dataset.unhalf]; if (h){ delete h.half; saveHold(); } if (OPEN) openDetail(OPEN); else render(); refreshHoldBar(); return; }
   const uh = e.target.closest("[data-unhold]");
   if (uh) { delete HOLD[uh.dataset.unhold]; saveHold(); render(); return; }
   const st = e.target.closest("[data-star]");
@@ -1376,6 +1448,7 @@ document.addEventListener("click", e => {
   if (row && DATA) openDetail(row.dataset.code);
 });
 
+function refreshHoldBar(){ const hb = document.getElementById("holdwrap"); if (hb && DATA) hb.innerHTML = holdBanner(); }
 // ---------- 차트 누르면: 종목코드 복사 + 영웅문S# 열기 ----------
 // 키움이 종목 화면으로 바로 가는 주소를 공개하지 않아서, 코드를 복사해 두고 앱만 열어요.
 const HERO_PKG = "com.kiwoom.heromts";
@@ -1390,8 +1463,8 @@ function openHero(code){
   try { const t = document.createElement("textarea"); t.value = code; t.style.position = "fixed"; t.style.opacity = "0";
         document.body.appendChild(t); t.select(); ok = document.execCommand("copy"); t.remove(); } catch (e) {}
   try { if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {}); ok = true; } catch (e) {}
-  toast(ok ? `${name} 종목코드 ${code} 복사됨 · 영웅문 검색창에 붙여넣기` : `종목코드 ${code} (복사 안 됨)`);
-  location.href = `intent:#Intent;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;package=${HERO_PKG};end`;
+  toast(ok ? `${name} ${code} 복사됨 · 플레이스토어에서 '열기' → 영웅문 검색창에 붙여넣기` : `종목코드 ${code} (복사 안 됨)`);
+  setTimeout(() => { location.href = `https://play.google.com/store/apps/details?id=${HERO_PKG}`; }, 50);
 }
 
 // ---------- 시작 ----------
@@ -1413,57 +1486,6 @@ function openHero(code){
     $("meta").textContent = "새 방식 자료를 기다리는 중이에요. Actions에서 daily를 실행해 주세요.";
   }
   render();
-})();
-</script>
-<script>
-// ---------- 리포트 앱 연동: 즐겨찾기·보유 종목(코드·이름만)을 저장소 portfolio-sync 브랜치의 portfolio.json에 저장 ----------
-// 매수가 등 보유 상세는 올리지 않음. 토큰은 이 기기에만 저장.
-(function(){
-  const REPO = "luckyhan-bot/luckyhan-app", BR = "portfolio-sync", FILE = "portfolio.json", TK = "report-sync-token";
-  const API = "https://api.github.com/repos/" + REPO;
-  const token = () => { try { return localStorage.getItem(TK) || ""; } catch (e) { return ""; } };
-  const b64 = s => btoa(unescape(encodeURIComponent(s)));
-  let timer = null, last = "";
-  async function gh(path, opt){
-    const r = await fetch(API + path, Object.assign({}, opt, {headers: {"Authorization": "Bearer " + token(), "Accept": "application/vnd.github+json"}}));
-    return r;
-  }
-  function snapshot(){
-    const nm = c => (typeof DATA !== "undefined" && DATA && DATA.stocks[c] && DATA.stocks[c].n) || c;
-    return {
-      favs: (typeof FAVS !== "undefined" ? FAVS : []).map(f => ({c: f.c, n: f.n || nm(f.c)})),
-      holds: Object.keys(typeof HOLD !== "undefined" ? HOLD : {}).map(c => ({c, n: nm(c)}))
-    };
-  }
-  async function push(){
-    if (!token()) return;
-    const snap = snapshot(), body = JSON.stringify(snap);
-    if (body === last) return;
-    try {
-      let ref = await gh("/git/ref/heads/" + BR);
-      if (ref.status === 404) {                       // 브랜치가 없으면 main에서 만든다
-        const main = await (await gh("/git/ref/heads/main")).json();
-        await gh("/git/refs", {method: "POST", body: JSON.stringify({ref: "refs/heads/" + BR, sha: main.object.sha})});
-      }
-      const cur = await gh("/contents/" + FILE + "?ref=" + BR);
-      const sha = cur.ok ? (await cur.json()).sha : undefined;
-      const content = JSON.stringify(Object.assign({updated: new Date().toISOString()}, snap), null, 1);
-      const r = await gh("/contents/" + FILE, {method: "PUT", body: JSON.stringify({message: "portfolio sync", content: b64(content), branch: BR, sha})});
-      if (r.ok) last = body;
-    } catch (e) {}
-  }
-  const later = () => { clearTimeout(timer); timer = setTimeout(push, 1500); };
-  const wrap = name => { const f = window[name]; if (typeof f === "function") window[name] = function(){ const v = f.apply(this, arguments); later(); return v; }; };
-  wrap("saveFavs"); wrap("saveHold");
-  document.addEventListener("click", e => {
-    if (!e.target || e.target.id !== "rsync") return;
-    const cur = token();
-    const v = prompt("리포트 앱 연동용 GitHub 토큰을 붙여넣으세요.\n(luckyhan-app 저장소 Contents 읽기·쓰기 권한만 있는 fine-grained 토큰)\n비워두고 확인하면 연동을 끕니다." + (cur ? "\n\n현재: 연동 중" : ""), "");
-    if (v === null) return;
-    try { if (v.trim()) localStorage.setItem(TK, v.trim()); else localStorage.removeItem(TK); } catch (err) {}
-    if (v.trim()) { last = ""; push().then(() => alert(last ? "연동 완료: 즐겨찾기·보유 종목을 저장했어요." : "저장 실패: 토큰 권한을 확인해 주세요.")); }
-  });
-  setTimeout(later, 4000);                            // 앱을 열 때도 한 번 맞춰 둔다
 })();
 </script>
 </body>
